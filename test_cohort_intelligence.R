@@ -22,19 +22,30 @@ connection_details <- DatabaseConnector::createConnectionDetails(
   port     = 5432
 )
 
-cdm_schema    <- "cdm"
-cohort_schema <- "results"
-vocab_schema  <- "vocab"
+cdm_schema   <- "cdm"
+vocab_schema <- "vocab"
 
 # ==============================================================================
-# STEP 2 -- Launch
+# STEP 2 -- Specify your cohort (pick one)
+# ==============================================================================
+
+# Option A: ATLAS JSON -- no cohort schema required
+json_path <- system.file("template", "DM_infection.json",
+                          package = "CohortIntelligence")
+
+# Option B: pre-built cohort table
+# json_path            <- NULL
+# cohort_schema        <- "results"
+# cohort_table         <- "cohort"
+# cohort_definition_id <- 1L
+
+# ==============================================================================
+# STEP 3 -- Launch
 # ==============================================================================
 
 launch_cohort_intelligence(
-  connection_details   = connection_details,
-  cdm_schema           = cdm_schema,
-  cohort_schema        = cohort_schema,
-  vocab_schema         = vocab_schema,
-  cohort_table         = "cohort",
-  cohort_definition_id = 1L
+  connection_details = connection_details,
+  cdm_schema         = cdm_schema,
+  vocab_schema       = vocab_schema,
+  json_path          = json_path
 )

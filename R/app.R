@@ -6,16 +6,22 @@
 #' @param connection_details A `connectionDetails` object from
 #'   `DatabaseConnector::createConnectionDetails()`. `NULL` starts demo mode.
 #' @param cdm_schema Schema containing OMOP CDM tables.
-#' @param cohort_schema Schema containing the cohort table (results schema).
 #' @param vocab_schema Vocabulary schema. Defaults to `cdm_schema`.
-#' @param cohort_table Name of the cohort table. Default `"cohort"`.
-#' @param cohort_definition_id Cohort definition ID. Default `1L`.
+#' @param json_path Path to an ATLAS cohort definition JSON file. When
+#'   supplied, the cohort is instantiated from the JSON directly -- no
+#'   `cohort_schema` or `cohort_table` is required.
+#' @param cohort_schema Schema containing a pre-built cohort table. Only
+#'   used when `json_path` is `NULL`.
+#' @param cohort_table Name of the pre-built cohort table. Default `"cohort"`.
+#' @param cohort_definition_id Cohort definition ID in the pre-built table.
+#'   Default `1L`.
 #' @export
 launch_cohort_intelligence <- function(
     connection_details   = NULL,
     cdm_schema           = NULL,
-    cohort_schema        = NULL,
     vocab_schema         = cdm_schema,
+    json_path            = NULL,
+    cohort_schema        = NULL,
     cohort_table         = "cohort",
     cohort_definition_id = 1L) {
   if (!requireNamespace("shiny", quietly = TRUE)) {
@@ -29,8 +35,9 @@ launch_cohort_intelligence <- function(
 
   .cohort_intel_env$connection_details   <- connection_details
   .cohort_intel_env$cdm_schema           <- cdm_schema
-  .cohort_intel_env$cohort_schema        <- cohort_schema
   .cohort_intel_env$vocab_schema         <- vocab_schema
+  .cohort_intel_env$json_path            <- json_path
+  .cohort_intel_env$cohort_schema        <- cohort_schema
   .cohort_intel_env$cohort_table         <- cohort_table
   .cohort_intel_env$cohort_definition_id <- as.integer(cohort_definition_id)
 

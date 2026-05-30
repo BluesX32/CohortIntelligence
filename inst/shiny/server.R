@@ -30,8 +30,10 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
   create_cohort_omop_connector(
     connectionDetails = env$connection_details,
     cdm_schema        = env$cdm_schema,
-    cohort_schema     = env$cohort_schema %||% env$cdm_schema,
-    vocab_schema      = env$vocab_schema  %||% env$cdm_schema
+    cohort_schema     = if (!is.null(env$cohort_schema)) env$cohort_schema
+                        else env$cdm_schema,
+    vocab_schema      = if (!is.null(env$vocab_schema)) env$vocab_schema
+                        else env$cdm_schema
   )
 }
 
@@ -73,36 +75,44 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
   meas_names <- c("CK (creatine kinase)", "Aldolase")
 
   cond_df <- .make_events(cond_ids, cond_names, -365:365) |>
-    dplyr::rename(condition_concept_id = concept_id,
-                  condition_name       = concept_name,
-                  condition_start_date = event_date) |>
-    dplyr::mutate(condition_occurrence_id = dplyr::row_number(),
-                  condition_end_date      = condition_start_date + 30L,
-                  condition_source_value  = as.character(condition_concept_id))
+    dplyr::rename("condition_concept_id" = "concept_id",
+                  "condition_name"       = "concept_name",
+                  "condition_start_date" = "event_date") |>
+    dplyr::mutate(
+      condition_occurrence_id = dplyr::row_number(),
+      condition_end_date      = .data$condition_start_date + 30L,
+      condition_source_value  = as.character(.data$condition_concept_id)
+    )
 
   drug_df <- .make_events(drug_ids, drug_names, -180:365) |>
-    dplyr::rename(drug_concept_id          = concept_id,
-                  drug_name                = concept_name,
-                  drug_exposure_start_date = event_date) |>
-    dplyr::mutate(drug_exposure_id         = dplyr::row_number(),
-                  drug_exposure_end_date   = drug_exposure_start_date + 90L,
-                  drug_source_value        = as.character(drug_concept_id))
+    dplyr::rename("drug_concept_id"          = "concept_id",
+                  "drug_name"                = "concept_name",
+                  "drug_exposure_start_date" = "event_date") |>
+    dplyr::mutate(
+      drug_exposure_id       = dplyr::row_number(),
+      drug_exposure_end_date = .data$drug_exposure_start_date + 90L,
+      drug_source_value      = as.character(.data$drug_concept_id)
+    )
 
   proc_df <- .make_events(proc_ids, proc_names, -365:30) |>
-    dplyr::rename(procedure_concept_id = concept_id,
-                  procedure_name       = concept_name,
-                  procedure_date       = event_date) |>
-    dplyr::mutate(procedure_occurrence_id = dplyr::row_number(),
-                  procedure_source_value  = as.character(procedure_concept_id))
+    dplyr::rename("procedure_concept_id" = "concept_id",
+                  "procedure_name"       = "concept_name",
+                  "procedure_date"       = "event_date") |>
+    dplyr::mutate(
+      procedure_occurrence_id = dplyr::row_number(),
+      procedure_source_value  = as.character(.data$procedure_concept_id)
+    )
 
   meas_df <- .make_events(meas_ids, meas_names, -365:365) |>
-    dplyr::rename(measurement_concept_id  = concept_id,
-                  measurement_name        = concept_name,
-                  measurement_date        = event_date) |>
-    dplyr::mutate(measurement_id           = dplyr::row_number(),
-                  value_as_number          = stats::runif(dplyr::n(), 50, 2000),
-                  unit_name                = "U/L",
-                  measurement_source_value = as.character(measurement_concept_id))
+    dplyr::rename("measurement_concept_id" = "concept_id",
+                  "measurement_name"       = "concept_name",
+                  "measurement_date"       = "event_date") |>
+    dplyr::mutate(
+      measurement_id           = dplyr::row_number(),
+      value_as_number          = stats::runif(dplyr::n(), 50, 2000),
+      unit_name                = "U/L",
+      measurement_source_value = as.character(.data$measurement_concept_id)
+    )
 
   visit_df <- purrr::map_dfr(seq_len(n), function(pid) {
     idx_date <- cohort_members$cohort_start_date[pid]
@@ -168,8 +178,14 @@ function(input, output, session) {
       if (is.null(connector)) return()
 
       shiny::setProgress(0.10, detail = "Extracting cohort members...")
+      env        <- CohortIntelligence:::.cohort_intel_env
+      use_json   <- !is.null(env$json_path) && nzchar(env$json_path)
       cohort_members <- tryCatch(
-        extract_cohort_members(connector),
+        if (use_json) {
+          fetch_cohort_from_json(connector, env$json_path)
+        } else {
+          extract_cohort_members(connector)
+        },
         error = function(e) {
           shiny::showNotification(paste("Error:", conditionMessage(e)),
                                   type = "error")
