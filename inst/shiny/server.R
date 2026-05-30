@@ -9,31 +9,30 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
 .build_connector <- function(input) {
   env <- CohortIntelligence:::.cohort_intel_env
 
-  if (is.null(env$connection_details)) {
+  # Demo mode: no live connection supplied
+  if (is.null(env$connection)) {
+    if (isTRUE(input$data_mode == "upload")) {
+      fp <- input$upload_rds$datapath
+      if (is.null(fp)) {
+        shiny::showNotification("Please upload an .rds file.", type = "warning")
+        return(NULL)
+      }
+      cohort_data <- tryCatch(readRDS(fp), error = function(e) NULL)
+      if (is.null(cohort_data)) {
+        shiny::showNotification("Could not read .rds file.", type = "error")
+        return(NULL)
+      }
+      return(create_cohort_df_connector(cohort_data))
+    }
     return(.make_demo_connector())
   }
 
-  if (isTRUE(input$data_mode == "upload")) {
-    fp <- input$upload_rds$datapath
-    if (is.null(fp)) {
-      shiny::showNotification("Please upload an .rds file.", type = "warning")
-      return(NULL)
-    }
-    cohort_data <- tryCatch(readRDS(fp), error = function(e) NULL)
-    if (is.null(cohort_data)) {
-      shiny::showNotification("Could not read .rds file.", type = "error")
-      return(NULL)
-    }
-    return(create_cohort_df_connector(cohort_data))
-  }
-
-  create_cohort_omop_connector(
-    connectionDetails = env$connection_details,
-    cdm_schema        = env$cdm_schema,
-    cohort_schema     = if (!is.null(env$cohort_schema)) env$cohort_schema
-                        else env$cdm_schema,
-    vocab_schema      = if (!is.null(env$vocab_schema)) env$vocab_schema
-                        else env$cdm_schema
+  # Live connection: wrap the already-open connection
+  create_cohort_connector(
+    connection   = env$connection,
+    cdm_schema   = env$cdm_schema,
+    vocab_schema = if (!is.null(env$vocab_schema)) env$vocab_schema
+                   else env$cdm_schema
   )
 }
 
@@ -263,12 +262,10 @@ function(input, output, session) {
     }
   })
 
-  # Auto-load when parameters are passed via launch_cohort_intelligence()
+  # Auto-load when a live connection is passed via launch_cohort_intelligence()
   shiny::observe({
     env <- CohortIntelligence:::.cohort_intel_env
-    has_params <- !is.null(env$connection_details) ||
-                  (!is.null(env$json_path) && nzchar(env$json_path))
-    if (has_params && is.null(rv$quilt_base())) {
+    if (!is.null(env$connection) && is.null(rv$quilt_base())) {
       connector <- .build_connector(input)
       if (!is.null(connector)) .run_pipeline(connector, env, rv)
     }

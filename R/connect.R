@@ -30,20 +30,63 @@
 # Constructors
 # ---------------------------------------------------------------------------
 
-#' Create an OMOP CDM connector for live database access
+#' Wrap a live database connection for use with CohortIntelligence
 #'
-#' Constructs a connector holding connection details and schema information.
-#' The database connection is opened lazily and closed immediately after each
-#' call to [with_cohort_connector()].
+#' The recommended approach. Call `DatabaseConnector::connect()` first to
+#' open the connection with the correct permissions, then pass it here.
+#' The connection is reused for all queries and never closed by the package --
+#' the caller controls the lifecycle.
+#'
+#' @param connection A live connection from `DatabaseConnector::connect()`.
+#' @param cdm_schema `character(1)`. Schema containing OMOP CDM tables.
+#' @param vocab_schema `character(1)` or `NULL`. Vocabulary schema.
+#'   Defaults to `cdm_schema`.
+#' @param cdm_version `character(1)`. Default `"5.4"`.
+#'
+#' @return An object of class `c("cohort_omop_connector", "cohort_connector")`.
+#' @export
+create_cohort_connector <- function(connection,
+                                     cdm_schema,
+                                     vocab_schema = NULL,
+                                     cdm_version  = "5.4") {
+  if (is.null(connection)) {
+    rlang::abort("'connection' must be a live DatabaseConnector connection.")
+  }
+  if (missing(cdm_schema) || !nzchar(cdm_schema)) {
+    rlang::abort("'cdm_schema' must be a non-empty character string.")
+  }
+  dbms_str <- tryCatch(DatabaseConnector::dbms(connection),
+                        error = function(e) {
+                          if (inherits(connection, "JDBCConnection")) "spark"
+                          else "sql server"
+                        })
+  structure(
+    list(
+      type              = "omop",
+      connectionDetails = NULL,
+      cdm_schema        = cdm_schema,
+      cohort_schema     = cdm_schema,
+      vocab_schema      = vocab_schema %||% cdm_schema,
+      cdm_version       = cdm_version,
+      conn              = connection,
+      dbms              = dbms_str
+    ),
+    class = c("cohort_omop_connector", "cohort_connector")
+  )
+}
+
+#' Create an OMOP CDM connector from connectionDetails (lazy connection)
+#'
+#' Opens a new connection per query and closes it immediately after.
+#' Prefer [create_cohort_connector()] with a pre-opened connection when
+#' working with permission-sensitive environments (Databricks, SAFER, etc.).
 #'
 #' @param connectionDetails A `connectionDetails` object from
 #'   `DatabaseConnector::createConnectionDetails()`.
 #' @param cdm_schema `character(1)`. Schema containing OMOP CDM tables.
-#' @param cohort_schema `character(1)` or `NULL`. Schema holding the cohort
-#'   table (results schema). Defaults to `cdm_schema`.
-#' @param vocab_schema `character(1)` or `NULL`. Vocabulary schema.
-#'   Defaults to `cdm_schema`.
-#' @param cdm_version `character(1)`. OMOP CDM version. Default `"5.4"`.
+#' @param cohort_schema `character(1)` or `NULL`. Defaults to `cdm_schema`.
+#' @param vocab_schema `character(1)` or `NULL`. Defaults to `cdm_schema`.
+#' @param cdm_version `character(1)`. Default `"5.4"`.
 #'
 #' @return An object of class `c("cohort_omop_connector", "cohort_connector")`.
 #' @export

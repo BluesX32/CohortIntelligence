@@ -26,26 +26,29 @@ cdm_schema   <- "cdm"
 vocab_schema <- "vocab"
 
 # ==============================================================================
-# STEP 2 -- Specify your cohort (pick one)
+# STEP 2 -- Connect
 # ==============================================================================
 
-# Option A: ATLAS JSON -- no cohort schema required
-json_path <- system.file("template", "DM_infection.json",
-                          package = "CohortIntelligence")
-
-# Option B: pre-built cohort table
-# json_path            <- NULL
-# cohort_schema        <- "results"
-# cohort_table         <- "cohort"
-# cohort_definition_id <- 1L
+connection <- DatabaseConnector::connect(connection_details)
 
 # ==============================================================================
-# STEP 3 -- Launch
+# STEP 3 -- Specify cohort via ATLAS JSON
+# ==============================================================================
+
+json_path <- system.file(
+  "template", "DM_infection.json",
+  package = "CohortIntelligence"
+)
+
+# ==============================================================================
+# STEP 4 -- Launch
 # ==============================================================================
 
 launch_cohort_intelligence(
-  connection_details = connection_details,
-  cdm_schema         = cdm_schema,
-  vocab_schema       = vocab_schema,
-  json_path          = json_path
+  connection   = connection,
+  cdm_schema   = cdm_schema,
+  vocab_schema = vocab_schema,
+  json_path    = json_path
 )
+
+DatabaseConnector::disconnect(connection)

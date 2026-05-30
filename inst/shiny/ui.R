@@ -12,7 +12,7 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
 # Determine at UI-build time whether params were passed at launch.
 # If so, the sidebar shows the cohort source info only (no manual inputs).
 .env         <- CohortIntelligence:::.cohort_intel_env
-.has_params  <- !is.null(.env$connection_details)
+.has_params  <- !is.null(.env$connection)
 .source_label <- if (.has_params) {
   if (!is.null(.env$json_path) && nzchar(.env$json_path)) {
     paste0("JSON: ", basename(.env$json_path))
@@ -51,7 +51,8 @@ shinydashboard::dashboardPage(
         shiny::tagList(
           shiny::h5("Cohort Source", style = "color: #b8c7ce;"),
           shiny::p(.source_label,
-                   style = "color: #ecf0f1; font-size: 11px; margin-bottom: 8px;")
+                   style = paste0("color: #ecf0f1; font-size: 11px;",
+                                  " margin-bottom: 8px;"))
         )
       } else {
         # No parameters -- show demo/upload picker
