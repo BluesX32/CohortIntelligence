@@ -59,7 +59,8 @@ anomaly_explorerServer <- function(id, ml_results, selected_patient) {
           xaxis = list(title = "UMAP 1"),
           yaxis = list(title = "UMAP 2"),
           legend = list(title = list(text = "Cluster"))
-        )
+        ) |>
+        plotly::event_register("plotly_click")
     })
 
     shiny::observeEvent(plotly::event_data("plotly_click", source = "umap"), {

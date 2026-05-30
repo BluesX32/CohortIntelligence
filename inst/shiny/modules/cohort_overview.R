@@ -214,10 +214,13 @@ cohort_overviewServer <- function(id,
       }
 
       # Window range filter
-      win_min <- match(input$window_range[[1]], time_window_labels)
-      win_max <- match(input$window_range[[2]], time_window_labels)
-      if (!is.na(win_min) && !is.na(win_max)) {
-        d <- dplyr::filter(d, window_idx >= win_min, window_idx <= win_max)
+      wr <- input$window_range
+      if (length(wr) >= 2L) {
+        win_min <- match(wr[1], time_window_labels)
+        win_max <- match(wr[2], time_window_labels)
+        if (!is.na(win_min) && !is.na(win_max)) {
+          d <- dplyr::filter(d, window_idx >= win_min, window_idx <= win_max)
+        }
       }
 
       # Re-encode fill value
@@ -367,6 +370,7 @@ cohort_overviewServer <- function(id,
       ) |>
       dplyr::arrange(patient_row)
 
+    win_labels  <- intersect(win_labels, names(mat_wide))
     z_mat       <- as.matrix(dplyr::select(mat_wide, dplyr::all_of(win_labels)))
     y_labels    <- mat_wide$display_label
     custom_ids  <- mat_wide$subject_id
@@ -427,6 +431,8 @@ cohort_overviewServer <- function(id,
       )
     })
   )
+
+  p <- plotly::event_register(p, "plotly_click")
 
   # Highlight selected patient row
   if (!is.null(selected_id)) {
