@@ -7,7 +7,7 @@ devtools::load_all(".")
 # STEP 1 -- Fill in your connection details
 # ==============================================================================
 
-connectionDetails <- DatabaseConnector::createConnectionDetails(
+connection_details <- DatabaseConnector::createConnectionDetails(
   dbms         = "sql server",
   server       = "yourserver.edu/OMOP",
   user         = "your_username",
@@ -16,43 +16,19 @@ connectionDetails <- DatabaseConnector::createConnectionDetails(
   pathToDriver = "C:/jdbc"
 )
 
-cdmDatabaseSchema    <- "dbo"
-cohortDatabaseSchema <- "results"
-vocabDatabaseSchema  <- "dbo"
-cohortTable          <- "cohort"
-cohortDefinitionId   <- 1L
+cdm_schema    <- "dbo"
+cohort_schema <- "results"
+vocab_schema  <- "dbo"
 
 # ==============================================================================
-# STEP 2 -- Connect and extract cohort
+# STEP 2 -- Launch
 # ==============================================================================
 
-connector <- create_cohort_omop_connector(
-  connectionDetails = connectionDetails,
-  cdm_schema        = cdmDatabaseSchema,
-  cohort_schema     = cohortDatabaseSchema,
-  vocab_schema      = vocabDatabaseSchema
+launch_cohort_intelligence(
+  connection_details   = connection_details,
+  cdm_schema           = cdm_schema,
+  cohort_schema        = cohort_schema,
+  vocab_schema         = vocab_schema,
+  cohort_table         = "cohort",
+  cohort_definition_id = 1L
 )
-
-cohortMembers <- extract_cohort_members(connector,
-                                         cohort_definition_id = cohortDefinitionId,
-                                         cohort_table         = cohortTable)
-message(nrow(cohortMembers), " patients in cohort.")
-
-domainData <- extract_omop_domains(connector,
-                                    subject_ids = cohortMembers$subject_id)
-
-# ==============================================================================
-# STEP 3 -- Build features and run ML
-# ==============================================================================
-
-timeWindows  <- define_time_windows()
-domainAct    <- build_domain_activity(cohortMembers, domainData, timeWindows)
-featureMat   <- build_feature_matrix(cohortMembers, domainData, timeWindows)
-mlResults    <- run_full_ml_pipeline(featureMat$wide)
-rankDf       <- rank_patients(mlResults, domainAct, cohortMembers)
-
-# ==============================================================================
-# STEP 4 -- Launch
-# ==============================================================================
-
-launch_cohort_intelligence()

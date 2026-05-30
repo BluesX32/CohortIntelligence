@@ -162,17 +162,19 @@ function(input, output, session) {
 }
 
 # ---------------------------------------------------------------------------
-# Internal: build connector from sidebar inputs
+# Internal: build connector from launch_cohort_intelligence() arguments
 # ---------------------------------------------------------------------------
 
 .build_connector <- function(input) {
-  mode <- input$data_mode %||% "demo"
+  env <- CohortIntelligence:::.cohort_intel_env
 
-  if (mode == "demo") {
+  # Demo mode: no connectionDetails supplied
+  if (is.null(env$connection_details)) {
     return(.make_demo_connector())
   }
 
-  if (mode == "upload") {
+  # Upload mode: user loaded an RDS file via the sidebar
+  if (isTRUE(input$data_mode == "upload")) {
     fp <- input$upload_rds$datapath
     if (is.null(fp)) {
       shiny::showNotification("Please upload an .rds file.", type = "warning")
@@ -186,35 +188,12 @@ function(input, output, session) {
     return(create_cohort_df_connector(cohort_data))
   }
 
-  # OMOP mode — requires DatabaseConnector
-  if (!requireNamespace("DatabaseConnector", quietly = TRUE)) {
-    shiny::showNotification("DatabaseConnector not installed.", type = "error")
-    return(NULL)
-  }
-  cdm_schema <- input$cdm_schema
-  if (!nzchar(cdm_schema %||% "")) {
-    shiny::showNotification("CDM schema is required.", type = "warning")
-    return(NULL)
-  }
-  cd <- tryCatch(
-    DatabaseConnector::createConnectionDetails(
-      dbms     = Sys.getenv("DBMS", "postgresql"),
-      server   = Sys.getenv("DB_SERVER"),
-      user     = Sys.getenv("DB_USER"),
-      password = Sys.getenv("DB_PASSWORD"),
-      port     = as.integer(Sys.getenv("DB_PORT", "5432"))
-    ),
-    error = function(e) NULL
-  )
-  if (is.null(cd)) {
-    shiny::showNotification("Could not create connection details. Check environment variables.", type = "error")
-    return(NULL)
-  }
+  # OMOP mode: use connection_details passed to launch_cohort_intelligence()
   create_cohort_omop_connector(
-    connectionDetails = cd,
-    cdm_schema        = cdm_schema,
-    cohort_schema     = input$cohort_schema %||% cdm_schema,
-    vocab_schema      = input$vocab_schema  %||% cdm_schema
+    connectionDetails = env$connection_details,
+    cdm_schema        = env$cdm_schema,
+    cohort_schema     = env$cohort_schema %||% env$cdm_schema,
+    vocab_schema      = env$vocab_schema  %||% env$cdm_schema
   )
 }
 
