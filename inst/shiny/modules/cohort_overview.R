@@ -153,15 +153,21 @@ cohort_overviewUI <- function(id) {
 #' @export
 cohort_overviewServer <- function(id,
                                    quilt_base,
-                                   selected_patient,
-                                   time_window_labels) {
+                                   selected_patient) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # Derive window labels from data so they stay in sync with the loaded cohort
+    win_labels_rv <- shiny::reactive({
+      shiny::req(quilt_base())
+      sort(unique(quilt_base()$window_label))
+    })
 
     # ── 1. Initialise controls once data is available ────────────────────────
     shiny::observe({
       shiny::req(quilt_base())
-      base <- quilt_base()
+      base       <- quilt_base()
+      win_labels <- win_labels_rv()
 
       clusters <- sort(unique(base$cluster_id))
       cluster_choices <- stats::setNames(
@@ -178,7 +184,6 @@ cohort_overviewServer <- function(id,
         selected = as.character(clusters)
       )
 
-      win_labels <- time_window_labels
       if (length(win_labels) >= 2L) {
         shinyWidgets::updateSliderTextInput(
           session, "window_range",
@@ -214,10 +219,11 @@ cohort_overviewServer <- function(id,
       }
 
       # Window range filter
-      wr <- input$window_range
-      if (length(wr) >= 2L) {
-        win_min <- match(wr[1], time_window_labels)
-        win_max <- match(wr[2], time_window_labels)
+      wr     <- input$window_range
+      labels <- win_labels_rv()
+      if (length(wr) >= 2L && length(labels) >= 2L) {
+        win_min <- match(wr[1], labels)
+        win_max <- match(wr[2], labels)
         if (!is.na(win_min) && !is.na(win_max)) {
           d <- dplyr::filter(d, window_idx >= win_min, window_idx <= win_max)
         }

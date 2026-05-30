@@ -4,10 +4,35 @@
 \alias{launch_cohort_intelligence}
 \title{Launch the CohortIntelligence Shiny dashboard}
 \usage{
-launch_cohort_intelligence(...)
+launch_cohort_intelligence(
+  connection_details = NULL,
+  cdm_schema = NULL,
+  vocab_schema = cdm_schema,
+  json_path = NULL,
+  cohort_schema = NULL,
+  cohort_table = "cohort",
+  cohort_definition_id = 1L
+)
 }
 \arguments{
-\item{...}{Additional arguments forwarded to \code{\link[shiny:runApp]{shiny::runApp()}}.}
+\item{connection_details}{A \code{connectionDetails} object from
+\code{DatabaseConnector::createConnectionDetails()}. \code{NULL} starts demo mode.}
+
+\item{cdm_schema}{Schema containing OMOP CDM tables.}
+
+\item{vocab_schema}{Vocabulary schema. Defaults to \code{cdm_schema}.}
+
+\item{json_path}{Path to an ATLAS cohort definition JSON file. When
+supplied, the cohort is instantiated from the JSON directly -- no
+\code{cohort_schema} or \code{cohort_table} is required.}
+
+\item{cohort_schema}{Schema containing a pre-built cohort table. Only
+used when \code{json_path} is \code{NULL}.}
+
+\item{cohort_table}{Name of the pre-built cohort table. Default \code{"cohort"}.}
+
+\item{cohort_definition_id}{Cohort definition ID in the pre-built table.
+Default \code{1L}.}
 }
 \description{
 Launch the CohortIntelligence Shiny dashboard

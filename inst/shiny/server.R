@@ -3,7 +3,7 @@
 for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
 
 # ---------------------------------------------------------------------------
-# Helpers (defined before the server function so they are in scope)
+# Helpers -- defined before the server function so they are in scope
 # ---------------------------------------------------------------------------
 
 .build_connector <- function(input) {
@@ -37,6 +37,96 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
   )
 }
 
+.run_pipeline <- function(connector, env, rv) {
+  shiny::withProgress(message = "Loading cohort...", value = 0, {
+
+    shiny::setProgress(0.10, detail = "Extracting cohort members...")
+    use_json       <- !is.null(env$json_path) && nzchar(env$json_path)
+    cohort_table   <- if (!is.null(env$cohort_table)) env$cohort_table
+                      else "cohort"
+    cohort_def_id  <- if (!is.null(env$cohort_definition_id))
+                        env$cohort_definition_id else 1L
+
+    cohort_members <- tryCatch(
+      if (use_json) {
+        fetch_cohort_from_json(connector, env$json_path)
+      } else {
+        extract_cohort_members(connector,
+                               cohort_definition_id = cohort_def_id,
+                               cohort_table         = cohort_table)
+      },
+      error = function(e) {
+        shiny::showNotification(paste("Error:", conditionMessage(e)),
+                                type = "error")
+        NULL
+      }
+    )
+    if (is.null(cohort_members) || nrow(cohort_members) == 0L) {
+      shiny::showNotification("No cohort members found.", type = "warning")
+      return()
+    }
+
+    shiny::setProgress(0.25, detail = "Extracting OMOP domains...")
+    domain_data <- tryCatch(
+      extract_omop_domains(connector,
+                           subject_ids = cohort_members$subject_id),
+      error = function(e) {
+        shiny::showNotification(
+          paste("Domain extract error:", conditionMessage(e)), type = "error")
+        NULL
+      }
+    )
+    if (is.null(domain_data)) return()
+
+    shiny::setProgress(0.45, detail = "Engineering features...")
+    time_windows <- define_time_windows()
+    domain_act   <- build_domain_activity(cohort_members, domain_data,
+                                          time_windows)
+
+    shiny::setProgress(0.60, detail = "Building feature matrix...")
+    feat_mat <- tryCatch(
+      build_feature_matrix(cohort_members, domain_data, time_windows),
+      error = function(e) NULL
+    )
+
+    shiny::setProgress(0.70, detail = "Running ML pipeline...")
+    ml_res  <- NULL
+    rank_df <- NULL
+    if (!is.null(feat_mat) && ncol(feat_mat$wide) > 1L) {
+      ml_res <- tryCatch(
+        run_full_ml_pipeline(feat_mat$wide),
+        error = function(e) {
+          shiny::showNotification(
+            paste("ML warning:", conditionMessage(e)), type = "warning")
+          NULL
+        }
+      )
+      if (!is.null(ml_res)) {
+        rank_df <- tryCatch(
+          rank_patients(ml_res, domain_act, cohort_members),
+          error = function(e) NULL
+        )
+      }
+    }
+
+    shiny::setProgress(0.90, detail = "Building quilt...")
+    quilt_base <- build_quilt_data(domain_act, rank_df)
+
+    rv$cohort_members(cohort_members)
+    rv$domain_data(domain_data)
+    rv$feature_matrix(feat_mat)
+    rv$ml_results(ml_res)
+    rv$rank_df(rank_df)
+    rv$quilt_base(quilt_base)
+
+    shiny::setProgress(1.0, detail = "Done.")
+    shiny::showNotification(
+      sprintf("Cohort loaded: %d patients.", nrow(cohort_members)),
+      type = "message"
+    )
+  })
+}
+
 .make_demo_connector <- function() {
   set.seed(99L)
   n <- 50L
@@ -44,7 +134,8 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
   cohort_members <- tibble::tibble(
     cohort_definition_id = 1L,
     subject_id           = seq_len(n),
-    cohort_start_date    = as.Date("2018-01-01") + sample(0:365, n, replace = TRUE),
+    cohort_start_date    = as.Date("2018-01-01") +
+                             sample(0:365, n, replace = TRUE),
     cohort_end_date      = as.Date("2020-12-31")
   )
 
@@ -58,7 +149,8 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
         person_id    = pid,
         concept_id   = ci,
         concept_name = concept_names[match(ci, concept_ids)],
-        event_date   = idx_date + sample(date_offset_range, n_events, replace = TRUE)
+        event_date   = idx_date +
+                         sample(date_offset_range, n_events, replace = TRUE)
       )
     })
   }
@@ -147,21 +239,22 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
 
 function(input, output, session) {
 
-  rv_selected_patient <- shiny::reactiveVal(NULL)
-  rv_quilt_base       <- shiny::reactiveVal(NULL)
-  rv_domain_data      <- shiny::reactiveVal(NULL)
-  rv_cohort_members   <- shiny::reactiveVal(NULL)
-  rv_feature_matrix   <- shiny::reactiveVal(NULL)
-  rv_ml_results       <- shiny::reactiveVal(NULL)
-  rv_rank_df          <- shiny::reactiveVal(NULL)
-  rv_time_win_labels  <- shiny::reactiveVal(character(0))
+  rv <- list(
+    selected_patient = shiny::reactiveVal(NULL),
+    quilt_base       = shiny::reactiveVal(NULL),
+    domain_data      = shiny::reactiveVal(NULL),
+    cohort_members   = shiny::reactiveVal(NULL),
+    feature_matrix   = shiny::reactiveVal(NULL),
+    ml_results       = shiny::reactiveVal(NULL),
+    rank_df          = shiny::reactiveVal(NULL)
+  )
 
   output$load_status <- shiny::renderUI({
-    if (is.null(rv_quilt_base())) {
+    if (is.null(rv$quilt_base())) {
       shiny::p("No cohort loaded.",
                style = "color: #b8c7ce; font-size: 12px; margin-top: 6px;")
     } else {
-      n <- length(unique(rv_cohort_members()$subject_id))
+      n <- length(unique(rv$cohort_members()$subject_id))
       shiny::div(
         class = "alert alert-success",
         style = "margin-top: 8px; padding: 4px 8px; font-size: 12px;",
@@ -170,129 +263,52 @@ function(input, output, session) {
     }
   })
 
-  shiny::observeEvent(input$btn_load_cohort, {
-    shiny::withProgress(message = "Loading cohort...", value = 0, {
-
-      shiny::setProgress(0.05, detail = "Building connector...")
-      connector <- .build_connector(input)
-      if (is.null(connector)) return()
-
-      shiny::setProgress(0.10, detail = "Extracting cohort members...")
-      env        <- CohortIntelligence:::.cohort_intel_env
-      use_json   <- !is.null(env$json_path) && nzchar(env$json_path)
-      cohort_members <- tryCatch(
-        if (use_json) {
-          fetch_cohort_from_json(connector, env$json_path)
-        } else {
-          extract_cohort_members(connector)
-        },
-        error = function(e) {
-          shiny::showNotification(paste("Error:", conditionMessage(e)),
-                                  type = "error")
-          NULL
-        }
-      )
-      if (is.null(cohort_members) || nrow(cohort_members) == 0L) {
-        shiny::showNotification("No cohort members found.", type = "warning")
-        return()
-      }
-
-      shiny::setProgress(0.20, detail = "Extracting OMOP domains...")
-      domain_data <- tryCatch(
-        extract_omop_domains(connector,
-                             subject_ids = cohort_members$subject_id),
-        error = function(e) {
-          shiny::showNotification(
-            paste("Domain extract error:", conditionMessage(e)), type = "error")
-          NULL
-        }
-      )
-      if (is.null(domain_data)) return()
-
-      shiny::setProgress(0.40, detail = "Engineering features...")
-      time_windows <- define_time_windows()
-      domain_act   <- build_domain_activity(cohort_members, domain_data,
-                                            time_windows)
-
-      shiny::setProgress(0.55, detail = "Building feature matrix...")
-      feat_mat <- tryCatch(
-        build_feature_matrix(cohort_members, domain_data, time_windows),
-        error = function(e) NULL
-      )
-
-      shiny::setProgress(0.65, detail = "Running ML pipeline...")
-      ml_res  <- NULL
-      rank_df <- NULL
-      if (!is.null(feat_mat) && ncol(feat_mat$wide) > 1L) {
-        ml_res <- tryCatch(
-          run_full_ml_pipeline(feat_mat$wide),
-          error = function(e) {
-            shiny::showNotification(
-              paste("ML warning:", conditionMessage(e)), type = "warning")
-            NULL
-          }
-        )
-        if (!is.null(ml_res)) {
-          rank_df <- tryCatch(
-            rank_patients(ml_res, domain_act, cohort_members),
-            error = function(e) NULL
-          )
-        }
-      }
-
-      shiny::setProgress(0.85, detail = "Building quilt...")
-      quilt_base <- build_quilt_data(domain_act, rank_df)
-
-      rv_cohort_members(cohort_members)
-      rv_domain_data(domain_data)
-      rv_feature_matrix(feat_mat)
-      rv_ml_results(ml_res)
-      rv_rank_df(rank_df)
-      rv_quilt_base(quilt_base)
-      rv_time_win_labels(sort(unique(quilt_base$window_label)))
-
-      shiny::setProgress(1.0, detail = "Done.")
-      shiny::showNotification(
-        sprintf("Cohort loaded: %d patients.", nrow(cohort_members)),
-        type = "message"
-      )
-    })
-  })
-
+  # Auto-load when parameters are passed via launch_cohort_intelligence()
   shiny::observe({
-    shiny::req(rv_quilt_base())
-    rv_time_win_labels(sort(unique(rv_quilt_base()$window_label)))
+    env <- CohortIntelligence:::.cohort_intel_env
+    has_params <- !is.null(env$connection_details) ||
+                  (!is.null(env$json_path) && nzchar(env$json_path))
+    if (has_params && is.null(rv$quilt_base())) {
+      connector <- .build_connector(input)
+      if (!is.null(connector)) .run_pipeline(connector, env, rv)
+    }
+  }) |> shiny::bindEvent(session$clientData$url_pathname, once = TRUE)
+
+  # Manual load button (demo mode and upload mode)
+  shiny::observeEvent(input$btn_load_cohort, {
+    env       <- CohortIntelligence:::.cohort_intel_env
+    connector <- .build_connector(input)
+    if (!is.null(connector)) .run_pipeline(connector, env, rv)
   })
 
   cohort_overviewServer(
     "overview",
-    quilt_base         = rv_quilt_base,
-    selected_patient   = rv_selected_patient,
-    time_window_labels = shiny::isolate(rv_time_win_labels()) %||% character(0)
+    quilt_base       = rv$quilt_base,
+    selected_patient = rv$selected_patient
   )
 
   anomaly_explorerServer(
     "anomaly",
-    ml_results       = shiny::reactive(rv_ml_results()),
-    selected_patient = rv_selected_patient
+    ml_results       = shiny::reactive(rv$ml_results()),
+    selected_patient = rv$selected_patient
   )
 
   patient_selectorServer(
     "selector",
-    rank_df          = shiny::reactive(rv_rank_df()),
-    selected_patient = rv_selected_patient
+    rank_df          = shiny::reactive(rv$rank_df()),
+    selected_patient = rv$selected_patient
   )
 
   trajectory_viewerServer(
     "trajectory",
-    selected_patient = rv_selected_patient,
-    domain_data      = shiny::reactive(rv_domain_data()),
-    cohort_members   = shiny::reactive(rv_cohort_members())
+    selected_patient = rv$selected_patient,
+    domain_data      = shiny::reactive(rv$domain_data()),
+    cohort_members   = shiny::reactive(rv$cohort_members())
   )
 
   hypothesis_panelServer(
     "hypotheses",
-    feature_matrix = shiny::reactive(rv_feature_matrix()),
-    ml_results     = shiny::reactive(rv_ml_results())
+    feature_matrix = shiny::reactive(rv$feature_matrix()),
+    ml_results     = shiny::reactive(rv$ml_results())
   )
 }
