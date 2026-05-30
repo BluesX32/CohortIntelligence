@@ -1,0 +1,52 @@
+Package: CohortIntelligence
+Title: OHDSI-Native Cohort Exploration and Hypothesis Generation
+Version: 0.1.0
+Authors@R:
+    person("First", "Last", , "author@example.com", role = c("aut", "cre"))
+Description: Interactive cohort exploration workbench for OMOP CDM studies.
+    Loads person-level OMOP domains (conditions, drugs, procedures,
+    measurements, visits, observations, death), engineers patient-level feature
+    matrices across time windows relative to cohort index dates, runs
+    unsupervised machine learning (UMAP, clustering, isolation forest) to detect
+    subgroups and out-of-distribution patients, ranks patients by review
+    priority, and presents a Shiny dashboard with a reactive quilt plot
+    (cohort-wide bird's-eye heatmap), trajectory viewer, anomaly explorer,
+    and hypothesis generation panel. Designed for OHDSI studies using OMOP
+    CDM v5.3/5.4.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    dplyr (>= 1.1.0),
+    purrr (>= 1.0.0),
+    rlang (>= 1.1.0),
+    tibble (>= 3.2.0),
+    tidyr (>= 1.3.0)
+Suggests:
+    lubridate (>= 1.9.0),
+    scales (>= 1.3.0),
+    stringr (>= 1.5.0),
+    DatabaseConnector (>= 6.0.0),
+    SqlRender (>= 1.17.0),
+    shiny (>= 1.8.0),
+    shinydashboard (>= 0.7.2),
+    shinyWidgets (>= 0.8.0),
+    shinyjs (>= 2.1.0),
+    plotly (>= 4.10.4),
+    ggplot2 (>= 3.5.0),
+    DT (>= 0.33),
+    umap (>= 0.2.10),
+    cluster (>= 2.1.6),
+    isotree (>= 0.6.0),
+    dbscan,
+    jsonlite (>= 1.8.0),
+    svglite (>= 2.1.3),
+    htmlwidgets (>= 1.6.0),
+    testthat (>= 3.2.0),
+    withr (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    DBI
+Config/testthat/edition: 3
+VignetteBuilder: knitr
