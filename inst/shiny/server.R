@@ -1,9 +1,6 @@
 # server.R — CohortIntelligence Shiny dashboard server
 
-source_modules <- function(dir) {
-  for (f in list.files(dir, pattern = "\\.R$", full.names = TRUE)) source(f)
-}
-source_modules(file.path(dirname(sys.frame(1)$ofile), "modules"))
+for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
 
 function(input, output, session) {
 

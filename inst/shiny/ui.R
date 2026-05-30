@@ -3,10 +3,7 @@
 pkgs <- c("shiny","shinydashboard","shinyWidgets","plotly","DT")
 for (p in pkgs) if (!requireNamespace(p, quietly = TRUE)) stop(sprintf("Package '%s' required.", p))
 
-source_modules <- function(dir) {
-  for (f in list.files(dir, pattern = "\\.R$", full.names = TRUE)) source(f)
-}
-source_modules(file.path(dirname(sys.frame(1)$ofile), "modules"))
+for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
 
 shinydashboard::dashboardPage(
   skin = "blue",
