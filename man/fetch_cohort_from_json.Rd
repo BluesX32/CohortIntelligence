@@ -2,7 +2,7 @@
 % Please edit documentation in R/cohort.R
 \name{fetch_cohort_from_json}
 \alias{fetch_cohort_from_json}
-\title{Instantiate a cohort from an ATLAS JSON file and return cohort members}
+\title{Instantiate a cohort from an ATLAS JSON file (fully read-only)}
 \usage{
 fetch_cohort_from_json(connector, json_path, cohort_id = 1L, verbose = FALSE)
 }
@@ -13,23 +13,18 @@ fetch_cohort_from_json(connector, json_path, cohort_id = 1L, verbose = FALSE)
 
 \item{cohort_id}{Integer. Default \code{1L}.}
 
-\item{verbose}{Logical. Print every SQL section to the console. Default
+\item{verbose}{Logical. Print generated SQL sections for debugging. Default
 \code{FALSE}.}
 }
 \value{
 tibble(subject_id, cohort_start_date, cohort_end_date)
 }
 \description{
-Reads an ATLAS cohort definition JSON, generates SQL via \code{CirceR}, then:
+Reads an ATLAS cohort definition JSON, generates SQL via \code{CirceR}, converts
+the entire multi-table pipeline into a single \verb{WITH ... SELECT} CTE query,
+and executes it as a plain read-only query via \code{DatabaseConnector}.
 }
 \details{
-\enumerate{
-\item Executes the \strong{setup section} (creates \verb{#Codesets} with expanded concept
-IDs). Writes only to session temp space -- no CDM write permissions.
-\item Extracts the \strong{SELECT} from the \verb{INSERT INTO ... SELECT} and executes it
-as a plain read-only query.
-}
-
-All database calls use \code{DatabaseConnector} regardless of connection type
-(ODBC, JDBC, or DBI).
+\strong{No write permissions required anywhere} -- no temp tables, no Delta
+tables, no intermediate storage.
 }

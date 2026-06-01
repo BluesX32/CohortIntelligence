@@ -2,7 +2,7 @@
 % Please edit documentation in R/cohort.R
 \name{check_cohort_json}
 \alias{check_cohort_json}
-\title{Diagnose a cohort JSON against the CDM (read-only)}
+\title{Diagnose a cohort JSON against the CDM (fully read-only)}
 \usage{
 check_cohort_json(connector, json_path, show_sql = FALSE)
 }
@@ -11,16 +11,12 @@ check_cohort_json(connector, json_path, show_sql = FALSE)
 
 \item{json_path}{Path to an ATLAS cohort definition JSON file.}
 
-\item{show_sql}{Logical. Print the raw CirceR SQL. Default \code{FALSE}.}
+\item{show_sql}{Logical. Print raw CirceR SQL. Default \code{FALSE}.}
 }
 \value{
 Invisibly, a named list with \verb{$concept_check} and \verb{$candidate_count}.
 }
 \description{
-Checks that concept IDs exist in the vocabulary and counts patients with at
-least one qualifying condition code (before any inclusion rules are applied).
-}
-\details{
-If \code{candidate_count > 0} but \code{\link[=fetch_cohort_from_json]{fetch_cohort_from_json()}} returns 0, re-run
-\code{fetch_cohort_from_json(..., verbose = TRUE)} to inspect the SQL.
+Checks concept coverage in the vocabulary and counts patients with at least
+one qualifying condition code (before inclusion rules). No data is modified.
 }

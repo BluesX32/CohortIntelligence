@@ -97,16 +97,33 @@ connection_details <- DatabaseConnector::createConnectionDetails(
 cdm_schema   <- "dbo"
 vocab_schema <- "dbo"
 
-# Point to your ATLAS cohort JSON -- no cohort schema needed
-json_path <- "inst/template/DM_infection.json"
+connection <- DatabaseConnector::connect(connection_details)
+
+# Point to a bundled cohort template or your own ATLAS export
+json_path <- system.file("template", "T2DM.json",
+                          package = "CohortIntelligence")
 
 launch_cohort_intelligence(
-  connection_details = connection_details,
-  cdm_schema         = cdm_schema,
-  vocab_schema       = vocab_schema,
-  json_path          = json_path
+  connection   = connection,
+  cdm_schema   = cdm_schema,
+  vocab_schema = vocab_schema,
+  json_path    = json_path
 )
+
+DatabaseConnector::disconnect(connection)
 ```
+
+> **Before launching**, verify the cohort will have patients in your CDM:
+> ```r
+> connector <- create_cohort_connector(connection, cdm_schema, vocab_schema)
+> check_cohort_json(connector, json_path)
+> # prints concept coverage + candidate patient count
+> ```
+> If `candidate_count = 0`, your CDM has no patients with the required
+> condition codes. If it is > 0 but the dashboard shows 0, the inclusion
+> rules are filtering everyone — run
+> `fetch_cohort_from_json(connector, json_path, verbose = TRUE)` to
+> inspect the SQL.
 
 > **JDBC drivers** are not bundled. Download once with:
 > ```r
@@ -122,37 +139,90 @@ There are three ways to define the study cohort.
 ### 1. ATLAS JSON file (recommended)
 
 Pass a path to any ATLAS cohort definition JSON via `json_path`. The package
-uses `CirceR` to compile the JSON into SQL, executes it against the CDM into
-a session temp table, and reads the resulting members. No cohort schema, no
-pre-existing cohort table, and no ATLAS server connection required.
+uses `CirceR` to compile the JSON into a read-only SELECT query executed
+against the CDM. No cohort schema, no pre-existing cohort table, and no write
+permissions to the CDM are required.
 
 ```r
 launch_cohort_intelligence(
-  connection_details = connection_details,
-  cdm_schema         = "dbo",
-  vocab_schema       = "dbo",
-  json_path          = "path/to/my_cohort.json"
+  connection   = connection,
+  cdm_schema   = "dbo",
+  vocab_schema = "dbo",
+  json_path    = system.file("template", "T2DM.json",
+                              package = "CohortIntelligence")
 )
 ```
 
-Bundled templates are in `inst/template/`. List them with:
+List bundled templates with `list_cohort_templates()`.
 
-```r
-list_cohort_templates()
-```
+---
 
-| Template | Cohort |
-|---|---|
-| `DM_infection.json` | Adult dermatomyositis (excludes juvenile/neonatal subtypes) |
+#### `T2DM.json` -- Type 2 Diabetes Mellitus initiated on Metformin
 
-### 2. Pre-built cohort table
+**All four criteria must be satisfied:**
 
-If the cohort has already been instantiated into a results schema (e.g. via
-ATLAS, `CohortGenerator`, or `CohortDiagnostics`):
+| # | Criterion | Detail |
+|---|---|---|
+| 1 | T2DM diagnosis | SNOMED 443732, 201826, 4193704 — all descendants and mapped codes included |
+| 2 | Age | ≥ 18 years at index date |
+| 3 | Prior observation | **365 continuous days** of observation period before the index date |
+| 4 | Metformin prescription | ≥ 1 occurrence of RxNorm 1503297 (metformin, all formulations) within **0 to 365 days after** the index date |
+
+**Index event:** First-ever qualifying T2DM occurrence only (`PrimaryCriteriaLimit: First`).
+
+**If this cohort returns 0 patients**, the most common reasons are:
+- Patients entered the CDM less than a year before their first T2DM code (365-day prior observation not met)
+- The CDM captures specialist visits but not primary care prescriptions (metformin not recorded)
+- The CDM uses non-SNOMED condition codes and the mapped concepts are not present
+
+Run `check_cohort_json(connector, json_path)` to confirm how many patients have
+the T2DM condition codes at all. If that count is 0, the CDM does not contain
+the required concept IDs and the cohort will always be empty regardless of
+inclusion rules.
+
+---
+
+#### `DM_infection.json` -- Adult Dermatomyositis (2-hit phenotype)
+
+**All criteria must be satisfied:**
+
+| # | Criterion | Detail |
+|---|---|---|
+| 1 | DM diagnosis | SNOMED 80182, 4270868, 4081250, 4344161 — all descendants included |
+| 2 | Excluded subtypes | Juvenile DM (606434, 37395588, 606385), neonatal DM (36674477), childhood DM (4005037) excluded with all descendants |
+| 3 | Confirmation | A **second DM diagnosis 30–365 days before** the index event (2-hit phenotype requirement) |
+| 4 | Age | ≥ 18 years at index date |
+
+**No prior observation window.** Censored at death. Episodes collapsed into ERAs.
+
+---
+
+#### Using your own cohort JSON
+
+Export any cohort from ATLAS (`Export → JSON`) and pass the file path:
 
 ```r
 launch_cohort_intelligence(
-  connection_details   = connection_details,
+  connection   = connection,
+  cdm_schema   = "dbo",
+  vocab_schema = "dbo",
+  json_path    = "path/to/my_cohort.json"
+)
+```
+
+Any ATLAS JSON valid for OMOP CDM ≥ 5.0 works. The SQL is generated by
+`CirceR` and executed as a read-only query — no ATLAS server required.
+
+---
+
+### 2. Pre-built cohort table
+
+If the cohort has already been instantiated (e.g. via ATLAS, `CohortGenerator`,
+or `CohortDiagnostics`):
+
+```r
+launch_cohort_intelligence(
+  connection           = connection,
   cdm_schema           = "dbo",
   vocab_schema         = "dbo",
   cohort_schema        = "results",
@@ -164,8 +234,7 @@ launch_cohort_intelligence(
 ### 3. Uploaded RDS file (no database)
 
 Select *"Upload RDS file"* in the sidebar and upload a named list saved with
-`saveRDS()`. The list must have slots matching the domain names used by
-`create_cohort_df_connector()`: `cohort`, `person`, `condition`, `drug`,
+`saveRDS()`. Required slots: `cohort`, `person`, `condition`, `drug`,
 `procedure`, `measurement`, `observation`, `visit`, `death`.
 
 ---
@@ -280,20 +349,23 @@ All queries are rendered via `SqlRender` for cross-DBMS compatibility.
 
 ```r
 # -- Cohort input ------------------------------------------------------------
-fetch_cohort_from_json(connector, json_path)   # ATLAS JSON -> cohort members
-list_cohort_templates()                         # list bundled JSON templates
-extract_cohort_members(connector)               # pre-built cohort table path
+fetch_cohort_from_json(connector, json_path)        # ATLAS JSON -> cohort members
+fetch_cohort_from_json(connector, json_path,        # verbose: prints SQL for debug
+                       verbose = TRUE)
+check_cohort_json(connector, json_path)             # diagnose before launching
+list_cohort_templates()                             # list bundled JSON templates
 
 # -- Launch ------------------------------------------------------------------
-launch_cohort_intelligence()                   # demo mode (no database)
-launch_cohort_intelligence(                    # ATLAS JSON path (recommended)
-  connection_details = connection_details,
-  cdm_schema         = "dbo",
-  vocab_schema       = "dbo",
-  json_path          = "inst/template/DM_infection.json"
+launch_cohort_intelligence()                        # demo mode (no database)
+launch_cohort_intelligence(                         # ATLAS JSON (recommended)
+  connection   = connection,
+  cdm_schema   = "dbo",
+  vocab_schema = "dbo",
+  json_path    = system.file("template", "T2DM.json",
+                              package = "CohortIntelligence")
 )
-launch_cohort_intelligence(                    # pre-built cohort table
-  connection_details   = connection_details,
+launch_cohort_intelligence(                         # pre-built cohort table
+  connection           = connection,
   cdm_schema           = "dbo",
   vocab_schema         = "dbo",
   cohort_schema        = "results",

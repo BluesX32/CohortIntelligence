@@ -1,16 +1,19 @@
 # cohort.R
 # Cohort instantiation from ATLAS JSON (CirceR format).
 #
-# CirceR with generateStats = FALSE generates SQL in two sections:
+# CirceR generates SQL that creates 7 intermediate tables:
+#   Codesets → qualified_events → Inclusion_0 → inclusion_events
+#   → included_events → strategy_ends → cohort_rows → final_cohort
 #
-#   SETUP  -- CREATE TABLE #Codesets; INSERT INTO #Codesets SELECT (concept expansion)
-#   COHORT -- DELETE FROM <target>; INSERT INTO <target> SELECT (the cohort logic)
+# Strategy (fully read-only, zero write permissions required):
+#   1. Render parameters (SqlRender::render)
+#   2. Split at DELETE FROM sentinel → setup section + final SELECT
+#   3. Translate setup to Spark dialect (CREATE TABLE ... USING DELTA ...)
+#   4. Convert every CREATE TABLE / INSERT INTO in the setup into a CTE
+#   5. Combine: WITH cte1 AS (...), ..., cteN AS (...) <final SELECT>
+#   6. Execute as a single plain querySql() call
 #
-# Strategy (read-only, no CDM write permissions required):
-#   1. Execute the SETUP section -- only touches session temp space (#Codesets)
-#   2. Extract the SELECT from the final INSERT and run it as a plain query
-#
-# All DB calls go through DatabaseConnector's standard API (no JDBC/ODBC branches).
+# No CREATE TABLE, no INSERT, no temp space, no write permissions anywhere.
 
 # ---------------------------------------------------------------------------
 # Internal: safe DBMS detection
@@ -29,25 +32,109 @@
 }
 
 # ---------------------------------------------------------------------------
+# Internal: convert translated Spark setup SQL to a WITH … CTE preamble
+# ---------------------------------------------------------------------------
+
+# Takes the Spark-translated setup section (the part before DELETE FROM sentinel)
+# and converts every CREATE TABLE / INSERT INTO statement into a named CTE.
+# Returns a character string: "WITH cte1 AS (...), cte2 AS (...), ..."
+#
+# Handles:
+#   DROP TABLE IF EXISTS xxx          → skip
+#   DROP TABLE xxx                    → skip
+#   TRUNCATE TABLE xxx                → skip
+#   CREATE TABLE xxx USING DELTA AS SELECT ... WHERE 1=0   → schema-only init, skip
+#   CREATE TABLE xxx USING DELTA AS SELECT <real body>     → CTE body
+#   INSERT INTO xxx (cols) SELECT <body>                   → UNION ALL to existing CTE
+
+.spark_setup_to_cte <- function(setup_sql) {
+  # Split on semicolons (safe: CirceR SQL has no semicolons inside statements)
+  stmts <- trimws(strsplit(setup_sql, ";", fixed = TRUE)[[1]])
+  stmts <- stmts[nzchar(stmts)]
+
+  cte_bodies <- list()   # table_name -> character vector of SELECT bodies
+  cte_order  <- character(0)
+
+  for (stmt in stmts) {
+    # ---- patterns to skip ----
+    if (grepl("^(DROP|TRUNCATE)[[:space:]]+TABLE", stmt,
+              ignore.case = TRUE, perl = TRUE)) next
+
+    # Schema-only init: CREATE TABLE xxx ... AS SELECT ... WHERE 1=0
+    if (grepl("WHERE[[:space:]]+1[[:space:]]*=[[:space:]]*0",
+              stmt, ignore.case = TRUE, perl = TRUE)) next
+
+    # ---- CREATE TABLE xxx USING DELTA AS <body> ----
+    cta_m <- regexpr(
+      paste0("CREATE[[:space:]]+TABLE[[:space:]]+([[:alnum:]_]+)",
+             "[[:space:]]+USING[[:space:]]+DELTA[[:space:]]+AS[[:space:]]*"),
+      stmt, ignore.case = TRUE, perl = TRUE
+    )
+    if (cta_m != -1L) {
+      # Extract table name from the first line only (avoids multiline sub() leak)
+      first_line <- strsplit(stmt, "\n", fixed = TRUE)[[1]][1]
+      tname <- sub(".*TABLE[[:space:]]+([[:alnum:]_]+).*", "\\1",
+                   first_line, ignore.case = TRUE, perl = TRUE)
+      body <- trimws(substring(stmt, cta_m + attr(cta_m, "match.length")))
+      if (!tname %in% cte_order) cte_order <- c(cte_order, tname)
+      cte_bodies[[tname]] <- c(cte_bodies[[tname]], body)
+      next
+    }
+
+    # ---- INSERT INTO xxx (cols) SELECT <body> ----
+    ins_m <- regexpr(
+      "INSERT[[:space:]]+INTO[[:space:]]+([[:alnum:]_]+)[[:space:]]*\\([^)]+\\)[[:space:]]*",
+      stmt, ignore.case = TRUE, perl = TRUE
+    )
+    if (ins_m != -1L) {
+      first_line <- strsplit(stmt, "\n", fixed = TRUE)[[1]][1]
+      tname <- sub(".*INTO[[:space:]]+([[:alnum:]_]+)[[:space:]]*.*", "\\1",
+                   first_line, ignore.case = TRUE, perl = TRUE)
+      body <- trimws(substring(stmt, ins_m + attr(ins_m, "match.length")))
+      if (!tname %in% cte_order) cte_order <- c(cte_order, tname)
+      cte_bodies[[tname]] <- c(cte_bodies[[tname]], body)
+      next
+    }
+  }
+
+  # Keep only CTEs that have at least one SELECT body
+  cte_order <- unique(cte_order)
+  cte_order <- cte_order[
+    sapply(cte_order, function(t) !is.null(cte_bodies[[t]]) &&
+             length(cte_bodies[[t]]) > 0L)
+  ]
+
+  if (length(cte_order) == 0L) {
+    rlang::abort(
+      "setup_to_cte: no CTEs could be extracted. Run with verbose=TRUE."
+    )
+  }
+
+  cte_strs <- sapply(cte_order, function(t) {
+    body <- paste(cte_bodies[[t]], collapse = "\nUNION ALL\n")
+    paste0(t, " AS (\n", body, "\n)")
+  })
+
+  paste("WITH", paste(cte_strs, collapse = ",\n"))
+}
+
+# ---------------------------------------------------------------------------
 # fetch_cohort_from_json
 # ---------------------------------------------------------------------------
 
-#' Instantiate a cohort from an ATLAS JSON file and return cohort members
+#' Instantiate a cohort from an ATLAS JSON file (fully read-only)
 #'
-#' Reads an ATLAS cohort definition JSON, generates SQL via `CirceR`, then:
+#' Reads an ATLAS cohort definition JSON, generates SQL via `CirceR`, converts
+#' the entire multi-table pipeline into a single `WITH ... SELECT` CTE query,
+#' and executes it as a plain read-only query via `DatabaseConnector`.
 #'
-#' 1. Executes the **setup section** (creates `#Codesets` with expanded concept
-#'    IDs). Writes only to session temp space -- no CDM write permissions.
-#' 2. Extracts the **SELECT** from the `INSERT INTO ... SELECT` and executes it
-#'    as a plain read-only query.
-#'
-#' All database calls use `DatabaseConnector` regardless of connection type
-#' (ODBC, JDBC, or DBI).
+#' **No write permissions required anywhere** -- no temp tables, no Delta
+#' tables, no intermediate storage.
 #'
 #' @param connector A `cohort_omop_connector` from [create_cohort_connector()].
 #' @param json_path Path to an ATLAS cohort definition JSON file.
 #' @param cohort_id Integer. Default `1L`.
-#' @param verbose Logical. Print every SQL section to the console. Default
+#' @param verbose Logical. Print generated SQL sections for debugging. Default
 #'   `FALSE`.
 #'
 #' @return tibble(subject_id, cohort_start_date, cohort_end_date)
@@ -70,29 +157,24 @@ fetch_cohort_from_json <- function(connector,
     rlang::abort(paste0("JSON file not found: ", json_path))
   }
 
-  # -- Step 1: parse JSON and generate SQL -----------------------------------
+  # -- Step 1: build CirceR SQL ----------------------------------------------
   message("[CI] Parsing: ", basename(json_path))
   json_str   <- paste(readLines(json_path, warn = FALSE), collapse = "\n")
-
   expression <- tryCatch(
     CirceR::cohortExpressionFromJson(json_str),
     error = function(e) rlang::abort(
-      paste0("CirceR failed to parse JSON: ", conditionMessage(e))
+      paste0("CirceR JSON parse failed: ", conditionMessage(e))
     )
   )
-
   opts       <- CirceR::createGenerateOptions(generateStats = FALSE)
   cohort_sql <- tryCatch(
     CirceR::buildCohortQuery(expression, options = opts),
     error = function(e) rlang::abort(
-      paste0("CirceR failed to build SQL: ", conditionMessage(e))
+      paste0("CirceR SQL generation failed: ", conditionMessage(e))
     )
   )
-
   if (length(cohort_sql) == 0L || !nzchar(cohort_sql %||% "")) {
-    rlang::abort(
-      "CirceR::buildCohortQuery() returned empty SQL. JSON may be malformed."
-    )
+    rlang::abort("CirceR returned empty SQL. JSON may be malformed.")
   }
   message("[CI] CirceR SQL generated (", nchar(cohort_sql), " chars).")
 
@@ -100,7 +182,7 @@ fetch_cohort_from_json <- function(connector,
     dbms <- .get_dbms(active)
     message("[CI] DBMS: ", dbms)
 
-    # Unique sentinel markers -- will never appear in real SQL
+    # Sentinel markers (never appear in real SQL)
     S_SCHEMA <- "CI_MARKER_SCHEMA_7x9"
     S_TABLE  <- "CI_MARKER_TABLE_7x9"
 
@@ -119,12 +201,10 @@ fetch_cohort_from_json <- function(connector,
         paste0("SqlRender::render() failed: ", conditionMessage(e))
       )
     )
-
     if (length(sql_full) == 0L || !nzchar(sql_full %||% "")) {
       rlang::abort(paste0(
         "SqlRender::render() returned empty SQL.\n",
-        "CDM schema: ", active$cdm_schema, "\n",
-        "Vocab schema: ", active$vocab_schema
+        "cdm_schema: ", active$cdm_schema, " | vocab_schema: ", active$vocab_schema
       ))
     }
     message("[CI] SQL rendered (", nchar(sql_full), " chars).")
@@ -134,90 +214,73 @@ fetch_cohort_from_json <- function(connector,
     }
 
     # -- Step 3: split at DELETE FROM sentinel --------------------------------
-    # Everything BEFORE the DELETE is the #Codesets setup section.
-    # Everything AFTER (and including) the DELETE is the cohort section.
-    delete_pattern <- paste0(
-      "DELETE\\s+FROM\\s+", S_SCHEMA, "\\.", S_TABLE
-    )
-    delete_pos <- regexpr(delete_pattern, sql_full,
-                          perl = TRUE, ignore.case = TRUE)
-
-    if (length(delete_pos) == 0L) {
-      rlang::abort("Regex on SQL returned integer(0). SQL may be character(0).")
+    del_pat  <- paste0("DELETE[[:space:]]+FROM[[:space:]]+",
+                       S_SCHEMA, "\\.", S_TABLE)
+    del_pos  <- regexpr(del_pat, sql_full, ignore.case = TRUE, perl = TRUE)
+    if (length(del_pos) == 0L) {
+      rlang::abort("Could not locate DELETE FROM sentinel. Run with verbose=TRUE.")
     }
-
-    setup_sql <- if (delete_pos > 1L) {
-      trimws(substring(sql_full, 1L, delete_pos - 1L))
+    setup_sql <- if (del_pos > 1L) {
+      trimws(substring(sql_full, 1L, del_pos - 1L))
     } else {
       ""
     }
-    message("[CI] Setup section: ", nchar(setup_sql), " chars.")
 
-    # -- Step 4: extract SELECT from INSERT INTO sentinel ... SELECT ----------
-    insert_pattern <- paste0(
-      "INSERT\\s+INTO\\s+", S_SCHEMA, "\\.", S_TABLE,
-      "\\s*\\([^)]+\\)\\s*"
+    # -- Step 4: extract final SELECT (after INSERT INTO sentinel ...) --------
+    ins_pat <- paste0(
+      "INSERT[[:space:]]+INTO[[:space:]]+", S_SCHEMA, "\\.", S_TABLE,
+      "[[:space:]]*\\([^)]+\\)[[:space:]]*"
     )
-    m <- regexpr(insert_pattern, sql_full, ignore.case = TRUE, perl = TRUE)
-
-    if (length(m) == 0L || m == -1L) {
+    ins_m <- regexpr(ins_pat, sql_full, ignore.case = TRUE, perl = TRUE)
+    if (length(ins_m) == 0L || ins_m == -1L) {
       rlang::abort(paste0(
-        "Could not find INSERT INTO ", S_SCHEMA, ".", S_TABLE,
-        " in rendered SQL.\n",
-        "Re-run with verbose = TRUE to inspect the SQL."
+        "Could not locate INSERT INTO sentinel. Run with verbose=TRUE."
       ))
     }
-
-    # Extract everything after the INSERT INTO header.
-    # Use perl = TRUE with [\\s\\S]* to match across newlines so that the
-    # trailing semicolons AND any extra DELETE/INSERT statements after the
-    # main SELECT are all removed.
-    after_insert <- substring(sql_full, m + attr(m, "match.length"))
-    select_sql   <- trimws(gsub(";[\\s\\S]*$", "", after_insert, perl = TRUE))
-
-    if (!nzchar(select_sql)) {
-      rlang::abort("Extracted SELECT is empty after removing trailing SQL.")
+    after_insert <- substring(sql_full, ins_m + attr(ins_m, "match.length"))
+    # Remove from first semicolon to end (removes trailing DELETE/INSERT)
+    final_select <- trimws(gsub(";[\\s\\S]*$", "", after_insert, perl = TRUE))
+    if (!nzchar(final_select)) {
+      rlang::abort("Extracted SELECT is empty. Run with verbose=TRUE.")
     }
-    message("[CI] Extracted SELECT (", nchar(select_sql), " chars).")
+    message("[CI] Final SELECT extracted (", nchar(final_select), " chars).")
 
-    # -- Step 5: translate for target DBMS ------------------------------------
-    if (nzchar(setup_sql)) {
-      setup_translated <- SqlRender::translate(setup_sql, targetDialect = dbms)
-      if (verbose) {
-        message("\n=== Setup SQL (", dbms, ") ===\n", setup_translated, "\n===\n")
-      }
-      message("[CI] Executing setup SQL (#Codesets)...")
-      tryCatch(
-        DatabaseConnector::executeSql(
-          active$conn, setup_translated,
-          progressBar = FALSE, reportOverallTime = FALSE
-        ),
-        error = function(e) rlang::abort(paste0(
-          "Setup SQL failed (#Codesets creation).\n",
-          "DBMS: ", dbms, "\n",
-          "Vocab schema: ", active$vocab_schema, "\n",
-          "Error: ", conditionMessage(e)
-        ))
-      )
-      message("[CI] Setup SQL done.")
-    }
+    # -- Step 5: translate both sections to target DBMS ----------------------
+    setup_translated  <- SqlRender::translate(setup_sql,    targetDialect = dbms)
+    select_translated <- SqlRender::translate(final_select, targetDialect = dbms)
 
-    select_translated <- SqlRender::translate(select_sql, targetDialect = dbms)
     if (verbose) {
-      message("\n=== Cohort SELECT (", dbms, ") ===\n", select_translated, "\n===\n")
+      message("\n=== Translated setup SQL ===\n", setup_translated, "\n===\n")
+      message("\n=== Translated SELECT ===\n",   select_translated, "\n===\n")
     }
 
-    # -- Step 6: run cohort SELECT --------------------------------------------
-    message("[CI] Running cohort SELECT...")
+    # -- Step 6: convert setup to CTE preamble (no writes needed) -----------
+    cte_preamble <- tryCatch(
+      .spark_setup_to_cte(setup_translated),
+      error = function(e) rlang::abort(
+        paste0("CTE conversion failed: ", conditionMessage(e), "\n",
+               "Run with verbose=TRUE to inspect translated setup SQL.")
+      )
+    )
+    message("[CI] CTE preamble built.")
+
+    # -- Step 7: build and execute the single read-only CTE query -----------
+    full_cte_query <- paste0(cte_preamble, "\n", select_translated)
+
+    if (verbose) {
+      message("\n=== Final CTE query ===\n", full_cte_query, "\n===\n")
+    }
+
+    message("[CI] Executing read-only CTE query...")
     df <- tryCatch(
       DatabaseConnector::querySql(
-        active$conn, select_translated,
+        active$conn, full_cte_query,
         snakeCaseToCamelCase = FALSE
       ),
       error = function(e) rlang::abort(paste0(
-        "Cohort SELECT failed.\n",
+        "CTE query failed.\n",
         "DBMS: ", dbms, "\n",
-        "Hint: re-run with verbose = TRUE to inspect the SELECT SQL.\n",
+        "Hint: re-run with verbose=TRUE to inspect the full CTE SQL.\n",
         "Error: ", conditionMessage(e)
       ))
     )
@@ -226,7 +289,6 @@ fetch_cohort_from_json <- function(connector,
     for (col in c("cohort_start_date", "cohort_end_date")) {
       if (col %in% names(df)) df[[col]] <- as.Date(df[[col]])
     }
-    # CirceR SELECT uses person_id; normalise to subject_id
     if (!"subject_id" %in% names(df) && "person_id" %in% names(df)) {
       df$subject_id <- df$person_id
     }
@@ -243,17 +305,14 @@ fetch_cohort_from_json <- function(connector,
 # check_cohort_json
 # ---------------------------------------------------------------------------
 
-#' Diagnose a cohort JSON against the CDM (read-only)
+#' Diagnose a cohort JSON against the CDM (fully read-only)
 #'
-#' Checks that concept IDs exist in the vocabulary and counts patients with at
-#' least one qualifying condition code (before any inclusion rules are applied).
-#'
-#' If `candidate_count > 0` but [fetch_cohort_from_json()] returns 0, re-run
-#' `fetch_cohort_from_json(..., verbose = TRUE)` to inspect the SQL.
+#' Checks concept coverage in the vocabulary and counts patients with at least
+#' one qualifying condition code (before inclusion rules). No data is modified.
 #'
 #' @param connector A `cohort_omop_connector` from [create_cohort_connector()].
 #' @param json_path Path to an ATLAS cohort definition JSON file.
-#' @param show_sql Logical. Print the raw CirceR SQL. Default `FALSE`.
+#' @param show_sql Logical. Print raw CirceR SQL. Default `FALSE`.
 #'
 #' @return Invisibly, a named list with `$concept_check` and `$candidate_count`.
 #' @export
@@ -320,9 +379,7 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
 
     candidate_count <- NA_integer_
     cond_ids <- if (nrow(concept_check) > 0L) {
-      concept_check$concept_id[
-        tolower(concept_check$domain_id) == "condition"
-      ]
+      concept_check$concept_id[tolower(concept_check$domain_id) == "condition"]
     } else {
       concept_ids
     }
@@ -353,11 +410,11 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
       if (is.na(candidate_count)) {
         message("Count query failed.")
       } else if (candidate_count == 0L) {
-        message("0 patients match -- cohort will be empty.")
+        message("0 patients with matching condition codes -- cohort will be empty.")
       } else {
         message(sprintf("%d patients with >=1 qualifying condition (pre-rules).",
                         candidate_count))
-        message("If fetch_cohort_from_json() returns 0, run with verbose = TRUE.")
+        message("If fetch_cohort_from_json() returns 0, run with verbose=TRUE.")
       }
     }
 
