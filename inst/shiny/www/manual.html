@@ -5,660 +5,1076 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CohortIntelligence — User Manual</title>
 <style>
-  :root {
-    --blue:   #2c7bb6;
-    --red:    #d7191c;
-    --green:  #1a9641;
-    --purple: #762a83;
-    --orange: #b35806;
-    --teal:   #41b6c4;
-    --grey:   #555;
-    --bg:     #f8f9fa;
-    --border: #dee2e6;
-    --text:   #212529;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-                 "Helvetica Neue", Arial, sans-serif;
-    font-size: 15px; line-height: 1.65; color: var(--text);
-    background: #fff; max-width: 960px; margin: 0 auto; padding: 24px 32px 64px;
-  }
-  h1 { font-size: 2em; font-weight: 700; margin-bottom: 4px; color: #1a1a1a; }
-  h2 {
-    font-size: 1.4em; font-weight: 700; margin: 40px 0 12px;
-    padding-bottom: 6px; border-bottom: 2px solid var(--blue); color: var(--blue);
-  }
-  h3 { font-size: 1.1em; font-weight: 600; margin: 24px 0 8px; color: #333; }
-  p  { margin-bottom: 12px; }
-  ul, ol { margin: 10px 0 14px 24px; }
-  li { margin-bottom: 5px; }
-  a  { color: var(--blue); }
-  code {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 3px; padding: 1px 5px; font-size: 0.88em;
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  }
-  table {
-    width: 100%; border-collapse: collapse; margin: 14px 0 20px;
-    font-size: 0.9em;
-  }
-  th {
-    background: var(--bg); border: 1px solid var(--border);
-    padding: 8px 12px; text-align: left; font-weight: 600;
-  }
-  td { border: 1px solid var(--border); padding: 7px 12px; vertical-align: top; }
-  tr:nth-child(even) td { background: #fafafa; }
-  .callout {
-    background: #e8f4fd; border-left: 4px solid var(--blue);
-    border-radius: 4px; padding: 12px 16px; margin: 16px 0;
-  }
-  .callout.warn {
-    background: #fff8e1; border-left-color: #f9a825;
-  }
-  .callout.tip {
-    background: #e8f5e9; border-left-color: var(--green);
-  }
-  .callout strong { display: block; margin-bottom: 4px; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.04em; }
-  .domain-dot {
-    display: inline-block; width: 12px; height: 12px;
-    border-radius: 2px; margin-right: 6px; vertical-align: middle;
-  }
-  .quilt-legend {
-    display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0;
-  }
-  .quilt-legend span {
-    display: flex; align-items: center; font-size: 0.88em;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 4px; padding: 4px 10px;
-  }
-  .toc {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-    padding: 16px 20px; margin: 20px 0 32px;
-  }
-  .toc ol { margin: 8px 0 0 20px; }
-  .toc li { margin-bottom: 3px; }
-  .subtitle { color: #666; font-size: 0.95em; margin-bottom: 24px; }
-  .window-diagram {
-    display: flex; gap: 2px; align-items: flex-end; margin: 16px 0;
-  }
-  .window-box {
-    flex: 1; text-align: center; font-size: 0.75em; border-radius: 3px 3px 0 0;
-    padding: 6px 2px;
-  }
-  .w-pre  { background: #d9f0ff; }
-  .w-idx  { background: #ffb347; color: #fff; font-weight: 700; }
-  .w-post { background: #c8e6c9; }
-  .label-row {
-    display: flex; gap: 2px; margin-top: 2px;
-  }
-  .label-row span {
-    flex: 1; text-align: center; font-size: 0.68em; color: #666;
-  }
+/* ── Reset & base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px; line-height: 1.7; color: #1a1a2e;
+  background: #fff;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+.layout { display: flex; min-height: 100vh; }
+
+/* Fixed sidebar nav */
+.nav {
+  width: 240px; flex-shrink: 0;
+  background: #0f3460; color: #ccd6f6;
+  position: fixed; top: 0; left: 0; height: 100vh;
+  overflow-y: auto; padding: 0 0 40px;
+}
+.nav-brand {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.nav-brand h2 { color: #e2e8f0; font-size: 1.05em; font-weight: 700; }
+.nav-brand p  { color: #94a3b8; font-size: 0.78em; margin-top: 2px; }
+.nav ul { list-style: none; padding: 8px 0; }
+.nav ul li a {
+  display: block; padding: 7px 20px;
+  color: #94a3b8; text-decoration: none; font-size: 0.84em;
+  transition: all 0.15s;
+}
+.nav ul li a:hover { color: #e2e8f0; background: rgba(255,255,255,0.07); }
+.nav ul li a.active { color: #60a5fa; font-weight: 600; }
+.nav-section {
+  padding: 14px 20px 4px;
+  font-size: 0.7em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #475569;
+}
+.nav ul li.sub a { padding-left: 32px; }
+
+/* Main content */
+.main {
+  margin-left: 240px; flex: 1;
+  max-width: 860px; padding: 40px 48px 80px;
+}
+
+/* ── Typography ────────────────────────────────────────────────────── */
+h1 {
+  font-size: 2.2em; font-weight: 800; color: #0f3460;
+  margin-bottom: 6px;
+}
+.subtitle { color: #64748b; font-size: 1em; margin-bottom: 32px; }
+h2 {
+  font-size: 1.45em; font-weight: 700; color: #0f3460;
+  margin: 52px 0 14px; padding-bottom: 8px;
+  border-bottom: 3px solid #e94560;
+}
+h3 { font-size: 1.1em; font-weight: 700; color: #1e3a5f; margin: 28px 0 10px; }
+h4 { font-size: 0.95em; font-weight: 700; color: #334155; margin: 20px 0 8px; }
+p { margin-bottom: 14px; }
+ul, ol { margin: 10px 0 16px 24px; }
+li { margin-bottom: 6px; }
+a { color: #2563eb; }
+a:hover { text-decoration: underline; }
+strong { color: #0f3460; }
+
+/* ── Code ──────────────────────────────────────────────────────────── */
+code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.84em; background: #f1f5f9;
+  border: 1px solid #e2e8f0; border-radius: 4px; padding: 1px 6px;
+}
+pre {
+  background: #0f172a; color: #e2e8f0; border-radius: 8px;
+  padding: 16px 20px; overflow-x: auto; font-size: 0.84em;
+  line-height: 1.6; margin: 12px 0 20px;
+}
+pre code { background: none; border: none; padding: 0; color: inherit; }
+
+/* ── Tables ────────────────────────────────────────────────────────── */
+table {
+  width: 100%; border-collapse: collapse;
+  margin: 14px 0 22px; font-size: 0.88em;
+}
+thead th {
+  background: #0f3460; color: #e2e8f0;
+  padding: 10px 14px; text-align: left; font-weight: 600;
+}
+tbody td { border: 1px solid #e2e8f0; padding: 9px 14px; vertical-align: top; }
+tbody tr:nth-child(even) td { background: #f8fafc; }
+tbody tr:hover td { background: #eff6ff; }
+
+/* ── Callouts ──────────────────────────────────────────────────────── */
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 18px 0;
+  border-left: 4px solid;
+}
+.callout.info  { background: #eff6ff; border-color: #2563eb; }
+.callout.warn  { background: #fffbeb; border-color: #f59e0b; }
+.callout.tip   { background: #f0fdf4; border-color: #16a34a; }
+.callout.caution { background: #fef2f2; border-color: #dc2626; }
+.callout .label {
+  font-size: 0.75em; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.08em; display: block; margin-bottom: 4px;
+}
+.callout.info .label  { color: #2563eb; }
+.callout.warn .label  { color: #d97706; }
+.callout.tip .label   { color: #16a34a; }
+.callout.caution .label { color: #dc2626; }
+
+/* ── Domain badges ─────────────────────────────────────────────────── */
+.domain-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px; margin: 14px 0;
+}
+.domain-card {
+  border-radius: 8px; padding: 12px 16px;
+  border-left: 5px solid; background: #f8fafc;
+}
+.domain-card .name { font-weight: 700; font-size: 0.9em; }
+.domain-card .desc { font-size: 0.8em; color: #475569; margin-top: 3px; }
+.d-condition   { border-color: #d73027; }
+.d-drug        { border-color: #313695; }
+.d-procedure   { border-color: #1a9641; }
+.d-measurement { border-color: #6a3d9a; }
+.d-observation { border-color: #b35806; }
+.d-visit       { border-color: #41b6c4; }
+.d-death       { border-color: #111111; }
+
+/* ── Quilt diagram ─────────────────────────────────────────────────── */
+.quilt-demo {
+  font-size: 0.7em; overflow-x: auto; margin: 16px 0;
+}
+.quilt-demo table { margin: 0; font-size: 1em; }
+.quilt-demo thead th { background: #334155; font-size: 0.85em; padding: 6px 4px; }
+.qcell {
+  width: 32px; height: 24px; border: 1px solid #fff !important;
+  padding: 0 !important;
+}
+.q0 { background: #fff; }
+.q1 { background: #fee8d3; }
+.q2 { background: #fdae61; }
+.q3 { background: #d73027; }
+.q4 { background: #8b0000; }
+.qb1 { background: #d4e8ff; }
+.qb2 { background: #74add1; }
+.qb3 { background: #313695; }
+.row-label { font-size: 0.82em; color: #475569; padding: 0 8px 0 0; white-space: nowrap; }
+
+/* ── Step boxes ────────────────────────────────────────────────────── */
+.steps { counter-reset: step; margin: 16px 0; }
+.step {
+  display: flex; gap: 16px; margin-bottom: 20px;
+  align-items: flex-start;
+}
+.step-num {
+  flex-shrink: 0; width: 32px; height: 32px;
+  background: #0f3460; color: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 0.9em;
+}
+.step-body h4 { margin-top: 4px; }
+
+/* ── Keyboard shortcut ─────────────────────────────────────────────── */
+kbd {
+  background: #f1f5f9; border: 1px solid #cbd5e1;
+  border-bottom: 3px solid #94a3b8; border-radius: 4px;
+  padding: 2px 6px; font-size: 0.8em;
+  font-family: inherit;
+}
+
+/* ── Hero band ──────────────────────────────────────────────────────── */
+.hero {
+  background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+  color: #e2e8f0; border-radius: 12px;
+  padding: 28px 32px; margin-bottom: 36px;
+}
+.hero h1 { color: #fff; margin-bottom: 4px; }
+.hero .subtitle { color: #94a3b8; }
+.hero .badges { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.badge {
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px; padding: 3px 12px; font-size: 0.78em; color: #cbd5e1;
+}
+
+/* ── Print ──────────────────────────────────────────────────────────── */
+@media print {
+  .nav { display: none; }
+  .main { margin-left: 0; padding: 20px; }
+}
+@media (max-width: 768px) {
+  .nav { display: none; }
+  .main { margin-left: 0; padding: 24px 20px; }
+}
 </style>
 </head>
 <body>
+<div class="layout">
 
-<h1>CohortIntelligence</h1>
-<p class="subtitle">User Manual — Cohort Exploration and Hypothesis Generation</p>
+<!-- ══════════════════════════════ SIDEBAR ══════════════════════════════ -->
+<nav class="nav">
+  <div class="nav-brand">
+    <h2>CohortIntelligence</h2>
+    <p>User Manual v0.1</p>
+  </div>
+  <ul>
+    <li class="nav-section">Getting Started</li>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#install">Installation</a></li>
+    <li><a href="#launch">Launching the Dashboard</a></li>
+    <li><a href="#connect">Database Connection</a></li>
+    <li><a href="#cohort">Loading a Cohort</a></li>
 
-<div class="toc">
-  <strong>Contents</strong>
-  <ol>
-    <li><a href="#what">What is CohortIntelligence?</a></li>
-    <li><a href="#quilt">Cohort Overview — Quilt Plot</a></li>
+    <li class="nav-section">Dashboard Tabs</li>
+    <li><a href="#quilt">Cohort Overview — Quilt</a></li>
+    <li class="sub"><a href="#quilt-read">How to read it</a></li>
+    <li class="sub"><a href="#quilt-patterns">Interpreting patterns</a></li>
+    <li class="sub"><a href="#quilt-controls">Controls</a></li>
     <li><a href="#anomaly">Anomaly Explorer</a></li>
     <li><a href="#selector">Patient Selector</a></li>
     <li><a href="#trajectory">Trajectory Viewer</a></li>
     <li><a href="#hypothesis">Hypothesis Panel</a></li>
-    <li><a href="#demographics">Demographics Tab</a></li>
+    <li><a href="#demographics">Demographics</a></li>
+
+    <li class="nav-section">Reference</li>
+    <li><a href="#domains">OMOP Domains</a></li>
+    <li><a href="#templates">Cohort Templates</a></li>
     <li><a href="#workflow">Recommended Workflow</a></li>
-    <li><a href="#limits">Limitations &amp; Caveats</a></li>
-  </ol>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#limits">Limitations</a></li>
+    <li><a href="#faq">FAQ</a></li>
+  </ul>
+</nav>
+
+<!-- ══════════════════════════════ MAIN ════════════════════════════════ -->
+<main class="main">
+
+<div class="hero">
+  <h1>CohortIntelligence</h1>
+  <p class="subtitle">OHDSI-native cohort exploration and hypothesis-generation workbench for OMOP CDM studies.</p>
+  <div class="badges">
+    <span class="badge">OMOP CDM v5.3 / v5.4</span>
+    <span class="badge">R + Shiny</span>
+    <span class="badge">Read-only CDM access</span>
+    <span class="badge">ATLAS JSON cohorts</span>
+    <span class="badge">v0.1.0</span>
+  </div>
 </div>
 
-<!-- ======================================================= -->
-<h2 id="what">1. What is CohortIntelligence?</h2>
+<!-- ══════════════════ OVERVIEW ══════════════════ -->
+<h2 id="overview">1. Overview</h2>
 
-<p>CohortIntelligence is an <strong>OHDSI-native cohort exploration workbench</strong>.
-It sits between standard cohort diagnostics (ATLAS, CohortDiagnostics) and formal
-chart review, providing a data-driven layer for understanding <em>who is in your
-cohort</em>, <em>what patterns exist</em>, and <em>what questions are worth
-investigating further</em>.</p>
+<p>CohortIntelligence fills the gap between standard cohort diagnostics
+(CohortDiagnostics, ATLAS) and formal chart review. It provides a
+<strong>data-driven exploration layer</strong> that helps researchers
+understand who is in their cohort, detect unusual subgroups, select
+informative patients for review, and generate candidate research
+hypotheses — all directly from OMOP CDM structured data.</p>
 
-<div class="callout">
-  <strong>What it is not</strong>
-  CohortIntelligence does <em>not</em> make clinical diagnoses, replace chart
-  review, or establish causal relationships. All outputs are
-  <strong>hypothesis-generating</strong>, not hypothesis-confirming. Treat every
-  finding as a lead for clinician discussion, not a conclusion.
+<div class="callout caution">
+  <span class="label">Not for clinical decision-making</span>
+  All outputs from CohortIntelligence are <strong>exploratory and
+  hypothesis-generating</strong>. They are not clinical diagnoses and must
+  not be used to make patient-care decisions. OMOP CDM data are structured
+  administrative and clinical records; they do not represent the complete
+  clinical picture.
 </div>
 
-<h3>How data flows</h3>
-<ol>
-  <li>You load a cohort via an ATLAS JSON definition or a pre-built cohort table.</li>
-  <li>The tool extracts OMOP CDM records for all 7 domains (condition, drug,
-      procedure, measurement, observation, visit, death).</li>
-  <li>Events are counted per patient × domain × time window, producing a
-      feature matrix for unsupervised machine learning.</li>
-  <li>UMAP + clustering groups patients by similarity; isolation forest scores
-      each patient's unusualness.</li>
-  <li>Everything is displayed in six interactive dashboard tabs.</li>
-</ol>
-
-<!-- ======================================================= -->
-<h2 id="quilt">2. Cohort Overview — Quilt Plot</h2>
-
-<p>The <strong>quilt plot</strong> is the centrepiece of the dashboard. It gives a
-bird's-eye view of the entire cohort in one glance.</p>
-
-<h3>How to read it</h3>
-
+<h3>What it does</h3>
 <table>
-  <tr><th>Axis</th><th>Meaning</th></tr>
-  <tr>
-    <td><strong>Rows</strong></td>
-    <td>One row = one patient. By default, patients are sorted by
-        cluster assignment so similar patients appear together.</td>
-  </tr>
-  <tr>
-    <td><strong>Column groups</strong></td>
-    <td>Each column group is one OMOP domain (CONDITION, DRUG, PROCEDURE,
-        MEASUREMENT, OBSERVATION, VISIT, DEATH).</td>
-  </tr>
-  <tr>
-    <td><strong>Columns within a group</strong></td>
-    <td>Each column is a <strong>time window</strong> relative to the cohort
-        index date (e.g., the first T2DM diagnosis). Negative windows = before
-        index; positive = after. <code>[-12,-6)</code> means 12–6 months before.</td>
-  </tr>
-  <tr>
-    <td><strong>Cell colour</strong></td>
-    <td>Intensity = number of events in that domain during that window.
-        Default encoding is <code>log1p(count)</code>: white = 0 events,
-        saturated colour = many events.</td>
-  </tr>
+  <thead><tr><th>Use case</th><th>What CohortIntelligence provides</th></tr></thead>
+  <tbody>
+    <tr><td>Cohort sanity check</td><td>Visual overview of who is in your cohort, what their clinical histories look like, and whether any patients look implausible.</td></tr>
+    <tr><td>Subgroup discovery</td><td>Unsupervised clustering of patients by clinical history. Each cluster may represent a clinically distinct phenotype.</td></tr>
+    <tr><td>Outlier identification</td><td>Anomaly scoring flags patients whose clinical histories are statistically unusual relative to the cohort.</td></tr>
+    <tr><td>Patient selection for review</td><td>Priority-ranked queue for targeted chart review, rather than random sampling.</td></tr>
+    <tr><td>Hypothesis generation</td><td>Automated statistical comparison between clusters to identify candidate research questions.</td></tr>
+    <tr><td>Clinician meeting prep</td><td>Structured patient trajectories and cohort signal reports for multidisciplinary discussion.</td></tr>
+  </tbody>
 </table>
 
-<h3>Time window diagram</h3>
-<div class="window-diagram">
-  <div class="window-box w-pre">[-24,-18)</div>
-  <div class="window-box w-pre">[-18,-12)</div>
-  <div class="window-box w-pre">[-12,-6)</div>
-  <div class="window-box w-pre">[-6,0)</div>
-  <div class="window-box w-idx">INDEX<br>DATE</div>
-  <div class="window-box w-post">[0,6)</div>
-  <div class="window-box w-post">[6,12)</div>
-</div>
-<p style="font-size:0.83em; color:#666;">
-  Blue = before index (prior history). Orange = index event.
-  Green = after index (outcomes, treatments).
-</p>
+<!-- ══════════════════ INSTALLATION ══════════════════ -->
+<h2 id="install">2. Installation</h2>
 
-<h3>Domain colour palette</h3>
-<div class="quilt-legend">
-  <span><span class="domain-dot" style="background:#D73027"></span>Condition (red)</span>
-  <span><span class="domain-dot" style="background:#313695"></span>Drug (blue)</span>
-  <span><span class="domain-dot" style="background:#1A9641"></span>Procedure (green)</span>
-  <span><span class="domain-dot" style="background:#6A3D9A"></span>Measurement (purple)</span>
-  <span><span class="domain-dot" style="background:#B35806"></span>Observation (orange)</span>
-  <span><span class="domain-dot" style="background:#41B6C4"></span>Visit (teal)</span>
-  <span><span class="domain-dot" style="background:#333"></span>Death (dark)</span>
-</div>
+<pre><code># Install from source (development)
+devtools::load_all("path/to/CohortIntelligence")
 
-<h3>What patterns mean</h3>
+# Or install as a package
+devtools::install("path/to/CohortIntelligence")</code></pre>
+
+<h3>Required packages</h3>
 <table>
-  <tr><th>Pattern</th><th>Clinical interpretation</th></tr>
-  <tr>
-    <td>Entire row is bright (many domains, all windows)</td>
-    <td>Data-rich patient — long observation period, frequent healthcare contact.
-        May be a complex patient or a very well-documented one.</td>
-  </tr>
-  <tr>
-    <td>Row is mostly white (sparse)</td>
-    <td>Data-sparse patient — short observation window, infrequent visits, or
-        poor data capture. Review before including in analyses.</td>
-  </tr>
-  <tr>
-    <td>Bright condition column before index, dark after</td>
-    <td>Typical chronic-disease pattern: diagnoses accumulate over years,
-        slow down after the defining event.</td>
-  </tr>
-  <tr>
-    <td>Bright drug column only after index</td>
-    <td>Treatment initiated at cohort entry — expected for first-prescription
-        cohorts (e.g., T2DM newly started on metformin).</td>
-  </tr>
-  <tr>
-    <td>Group of rows with identical pattern</td>
-    <td>A cluster — patients with similar clinical histories. Inspect whether
-        the cluster represents a meaningful clinical subgroup or a data artefact.</td>
-  </tr>
-  <tr>
-    <td>Isolated dark cells in DEATH column</td>
-    <td>Patients with a recorded death event. Short horizontal lines appear
-        because death is a single event (no time-window spread).</td>
-  </tr>
-  <tr>
-    <td>Bright MEASUREMENT + bright DRUG, but sparse CONDITION</td>
-    <td>Possible coding pattern: lab monitoring and prescriptions captured but
-        diagnoses poorly coded (common in some EHR configurations).</td>
-  </tr>
+  <thead><tr><th>Category</th><th>Packages</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>Core (Imports)</td><td><code>dplyr</code>, <code>purrr</code>, <code>rlang</code>, <code>tibble</code>, <code>tidyr</code></td><td>Data manipulation</td></tr>
+    <tr><td>Dashboard</td><td><code>shiny</code>, <code>shinydashboard</code>, <code>shinyWidgets</code>, <code>plotly</code>, <code>DT</code></td><td>Interactive UI</td></tr>
+    <tr><td>OMOP connectivity</td><td><code>DatabaseConnector</code>, <code>SqlRender</code>, <code>CirceR</code></td><td>CDM queries &amp; cohort SQL</td></tr>
+    <tr><td>ML pipeline</td><td><code>uwot</code> (recommended), <code>cluster</code>, <code>isotree</code></td><td>UMAP, clustering, anomaly</td></tr>
+    <tr><td>Export</td><td><code>ggplot2</code>, <code>svglite</code></td><td>Static plot export</td></tr>
+  </tbody>
 </table>
 
-<h3>Controls</h3>
-<table>
-  <tr><th>Control</th><th>What it does</th></tr>
-  <tr>
-    <td><strong>Clusters</strong></td>
-    <td>Show only selected cluster(s). Use to compare one cluster against
-        another. "Unassigned (0)" means clustering has not yet been run or all
-        patients are in one group.</td>
-  </tr>
-  <tr>
-    <td><strong>Domains</strong></td>
-    <td>Toggle domains on/off. Hiding noisy domains (e.g., VISIT) can reveal
-        clearer patterns in clinical domains.</td>
-  </tr>
-  <tr>
-    <td><strong>Sort Patients By</strong></td>
-    <td><em>cluster</em> = patients from the same cluster appear together
-        (default). <em>rank</em> = highest-priority patients at top.
-        <em>subject_id</em> = arbitrary order.</td>
-  </tr>
-  <tr>
-    <td><strong>Cell Value</strong></td>
-    <td><em>log1p_count</em> = compressed scale, good for comparing patients
-        with very different event volumes. <em>binary</em> = presence/absence
-        only, ignores volume. <em>count</em> = raw count, useful when exact
-        numbers matter.</td>
-  </tr>
-  <tr>
-    <td><strong>Time Window slider</strong></td>
-    <td>Restrict to a subset of windows. Focus on the pre-index period to
-        see prior history, or post-index to see outcomes.</td>
-  </tr>
-  <tr>
-    <td><strong>Click a cell</strong></td>
-    <td>Selects that patient across all panels. A blue info bar appears below
-        the plot with the patient ID, cluster, and priority tier. Click
-        "View Trajectory" to see their full clinical timeline.</td>
-  </tr>
-</table>
+<pre><code># Install OHDSI packages (not on CRAN)
+remotes::install_github("OHDSI/CirceR")
+remotes::install_github("OHDSI/SqlRender")
+remotes::install_github("OHDSI/DatabaseConnector")
+
+# Install ML packages
+install.packages(c("uwot", "cluster", "isotree"))</code></pre>
+
+<!-- ══════════════════ LAUNCH ══════════════════ -->
+<h2 id="launch">3. Launching the Dashboard</h2>
+
+<h3>Demo mode (no database)</h3>
+<pre><code>library(CohortIntelligence)
+launch_cohort_intelligence()   # opens with 50 synthetic patients</code></pre>
+<p>All tabs are fully functional in demo mode. Use it to explore the interface
+before connecting to a live database.</p>
+
+<h3>Live OMOP database</h3>
+<pre><code>devtools::load_all(".")
+
+connection_details &lt;- DatabaseConnector::createConnectionDetails(
+  dbms         = "spark",          # or "postgresql", "sql server", etc.
+  server       = "your-server/path",
+  user         = "token",
+  password     = "your-token",
+  port         = 443,
+  pathToDriver = "/path/to/jdbc.jar"
+)
+
+connection &lt;- DatabaseConnector::connect(connection_details)
+
+launch_cohort_intelligence(
+  connection   = connection,
+  cdm_schema   = "your_cdm_schema",
+  vocab_schema = "your_vocab_schema",
+  json_path    = system.file("template", "T2DM.json",
+                              package = "CohortIntelligence")
+)
+
+DatabaseConnector::disconnect(connection)</code></pre>
 
 <div class="callout tip">
-  <strong>Quick reading tip</strong>
-  Scan the quilt from top to bottom. Rows should cluster into bands of
-  similar colour. Patients that look nothing like their neighbours are
-  worth investigating — they may represent a distinct clinical subtype,
-  data-quality issues, or misclassified patients.
+  <span class="label">Tip: diagnose before launching</span>
+  Run <code>check_cohort_json(connector, json_path)</code> before
+  <code>launch_cohort_intelligence()</code> to verify concept coverage
+  and patient count. A few seconds here prevents a confusing 0-patient
+  result.
 </div>
 
-<!-- ======================================================= -->
-<h2 id="anomaly">3. Anomaly Explorer</h2>
+<!-- ══════════════════ CONNECTION ══════════════════ -->
+<h2 id="connect">4. Database Connection</h2>
 
-<p>The Anomaly Explorer shows the output of the unsupervised machine learning
-pipeline applied to the patient feature matrix.</p>
+<p>CohortIntelligence uses the standard OHDSI
+<code>DatabaseConnector::createConnectionDetails()</code> pattern — the
+same used by CohortDiagnostics, PatientLevelPrediction, and other HADES
+packages.</p>
+
+<table>
+  <thead><tr><th>DBMS</th><th>dbms value</th><th>Typical port</th></tr></thead>
+  <tbody>
+    <tr><td>Databricks / Spark</td><td><code>"spark"</code></td><td>443</td></tr>
+    <tr><td>PostgreSQL</td><td><code>"postgresql"</code></td><td>5432</td></tr>
+    <tr><td>SQL Server</td><td><code>"sql server"</code></td><td>1433</td></tr>
+    <tr><td>Amazon Redshift</td><td><code>"redshift"</code></td><td>5439</td></tr>
+    <tr><td>Google BigQuery</td><td><code>"bigquery"</code></td><td>—</td></tr>
+    <tr><td>Snowflake</td><td><code>"snowflake"</code></td><td>443</td></tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <span class="label">JDBC drivers</span>
+  JDBC drivers are not bundled. Download once with:
+  <code>DatabaseConnector::downloadJdbcDrivers("spark", pathToDriver = "/path/to/folder")</code>
+</div>
+
+<!-- ══════════════════ COHORT ══════════════════ -->
+<h2 id="cohort">5. Loading a Cohort</h2>
+
+<h3>Option A — ATLAS JSON file (recommended)</h3>
+<p>No write permissions to the CDM required. CohortIntelligence uses
+<code>CirceR</code> to compile the JSON into a single read-only SQL SELECT
+and returns cohort members directly.</p>
+<pre><code>json_path &lt;- system.file("template", "T2DM.json",
+                          package = "CohortIntelligence")
+# or your own ATLAS export:
+json_path &lt;- "path/to/my_cohort.json"
+
+launch_cohort_intelligence(
+  connection   = connection,
+  cdm_schema   = "schema",
+  vocab_schema = "schema",
+  json_path    = json_path
+)</code></pre>
+
+<h3>Option B — Pre-built cohort table</h3>
+<pre><code>launch_cohort_intelligence(
+  connection           = connection,
+  cdm_schema           = "schema",
+  vocab_schema         = "schema",
+  cohort_schema        = "results_schema",
+  cohort_table         = "cohort",
+  cohort_definition_id = 1L
+)</code></pre>
+
+<h3>Option C — Uploaded RDS file</h3>
+<p>Select <em>Upload RDS file</em> in the sidebar. The RDS must be a named
+list with slots: <code>cohort</code>, <code>person</code>,
+<code>condition</code>, <code>drug</code>, <code>procedure</code>,
+<code>measurement</code>, <code>observation</code>, <code>visit</code>,
+<code>death</code>.</p>
+
+<h3>What happens after loading</h3>
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h4>Cohort extraction</h4>
+      <p>Cohort members and index dates are retrieved from the JSON or
+      cohort table.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h4>Domain extraction</h4>
+      <p>Records from all 7 OMOP domains are pulled for every cohort
+      member, batched in groups of 500 patients to avoid query size
+      limits.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h4>Feature engineering</h4>
+      <p>Events are counted per patient × domain × time window relative
+      to the index date, producing a feature matrix.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h4>ML pipeline</h4>
+      <p>UMAP dimensionality reduction, k-means/hierarchical clustering,
+      and isolation-forest anomaly scoring run on the feature matrix.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <h4>All tabs populate automatically</h4>
+      <p>Quilt, UMAP, patient ranking, trajectory (top patient), hypothesis
+      results, and demographics all appear without any further clicks.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ QUILT ══════════════════ -->
+<h2 id="quilt">6. Cohort Overview — Quilt Plot</h2>
+
+<p>The quilt is the centrepiece of the dashboard. It renders a
+<strong>patient × time-window × domain heatmap</strong> that lets you see
+the entire cohort in one glance.</p>
+
+<h3 id="quilt-read">How to read the quilt</h3>
+
+<div class="quilt-demo">
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th colspan="3" style="text-align:center; color:#fca5a5;">CONDITION</th>
+      <th colspan="3" style="text-align:center; color:#93c5fd;">DRUG</th>
+      <th colspan="3" style="text-align:center; color:#6ee7b7;">VISIT</th>
+    </tr>
+    <tr>
+      <th></th>
+      <th style="font-size:0.8em; font-weight:400;">[-12,-6)</th>
+      <th style="font-size:0.8em; font-weight:400;">[-6,0)</th>
+      <th style="font-size:0.8em; font-weight:400;">[0,6)</th>
+      <th style="font-size:0.8em; font-weight:400;">[-12,-6)</th>
+      <th style="font-size:0.8em; font-weight:400;">[-6,0)</th>
+      <th style="font-size:0.8em; font-weight:400;">[0,6)</th>
+      <th style="font-size:0.8em; font-weight:400;">[-12,-6)</th>
+      <th style="font-size:0.8em; font-weight:400;">[-6,0)</th>
+      <th style="font-size:0.8em; font-weight:400;">[0,6)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="row-label">Patient A</td>
+      <td class="qcell q3"></td><td class="qcell q4"></td><td class="qcell q2"></td>
+      <td class="qcell q0"></td><td class="qcell q1"></td><td class="qcell q3"></td>
+      <td class="qcell q2"></td><td class="qcell q2"></td><td class="qcell q1"></td>
+    </tr>
+    <tr><td class="row-label">Patient B</td>
+      <td class="qcell q3"></td><td class="qcell q3"></td><td class="qcell q2"></td>
+      <td class="qcell q0"></td><td class="qcell q0"></td><td class="qcell q2"></td>
+      <td class="qcell q2"></td><td class="qcell q3"></td><td class="qcell q2"></td>
+    </tr>
+    <tr><td class="row-label">Patient C</td>
+      <td class="qcell q0"></td><td class="qcell q0"></td><td class="qcell q0"></td>
+      <td class="qcell q0"></td><td class="qcell qb3"></td><td class="qcell qb3"></td>
+      <td class="qcell q0"></td><td class="qcell q1"></td><td class="qcell q1"></td>
+    </tr>
+    <tr><td class="row-label">Patient D</td>
+      <td class="qcell q1"></td><td class="qcell q1"></td><td class="qcell q0"></td>
+      <td class="qcell q0"></td><td class="qcell qb3"></td><td class="qcell qb2"></td>
+      <td class="qcell q1"></td><td class="qcell q0"></td><td class="qcell q0"></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<ul>
+  <li><strong>Each row</strong> is one patient. Rows are sorted by cluster (default) so similar patients group together.</li>
+  <li><strong>Each column group</strong> is one OMOP domain (CONDITION, DRUG, PROCEDURE, etc.).</li>
+  <li><strong>Each column within a group</strong> is a time window relative to the cohort index date. <code>[-6,0)</code> = the 6 months before index.</li>
+  <li><strong>Cell colour intensity</strong> = number of events that patient had in that domain during that window. White = 0 events. Saturated colour = many events.</li>
+  <li><strong>Default encoding is <code>log1p(count)</code></strong> — logarithmically compressed so a patient with 50 conditions doesn't wash out the scale.</li>
+</ul>
+
+<h3>Understanding time windows</h3>
+<table>
+  <thead><tr><th>Window</th><th>Period</th><th>What it captures</th></tr></thead>
+  <tbody>
+    <tr><td><code>[-24,-18)</code></td><td>2–1.5 years before index</td><td>Distant prior history</td></tr>
+    <tr><td><code>[-18,-12)</code></td><td>1.5–1 year before</td><td>Prior history</td></tr>
+    <tr><td><code>[-12,-6)</code></td><td>12–6 months before</td><td>Near-term prior history</td></tr>
+    <tr><td><code>[-6,0)</code></td><td>6 months before index</td><td>Immediate pre-index period</td></tr>
+    <tr><td><code>[0,6)</code></td><td>0–6 months after</td><td>Early post-index outcomes</td></tr>
+    <tr><td><code>[6,12)</code></td><td>6–12 months after</td><td>Late outcomes / follow-up</td></tr>
+  </tbody>
+</table>
+
+<h3 id="quilt-patterns">Interpreting patterns</h3>
+
+<table>
+  <thead><tr><th>What you see</th><th>Clinical interpretation</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Entire row bright across all domains</td>
+      <td>Data-rich patient with long observation history and frequent healthcare contacts. May represent a complex patient or a well-documented one.</td>
+    </tr>
+    <tr>
+      <td>Mostly white row</td>
+      <td><strong>Data-sparse patient.</strong> Short observation window, infrequent visits, or incomplete data capture. Review before including in downstream analyses.</td>
+    </tr>
+    <tr>
+      <td>Bright condition column before index, dimming after</td>
+      <td>Typical chronic-disease pattern: diagnoses accumulate over years, slow down after the defining event is recorded.</td>
+    </tr>
+    <tr>
+      <td>Bright drug column only after index</td>
+      <td><strong>Treatment initiation at cohort entry.</strong> Expected for first-prescription cohorts (e.g., T2DM newly started on metformin).</td>
+    </tr>
+    <tr>
+      <td>Bands of visually similar rows</td>
+      <td>These are the ML clusters — patients grouped by similar clinical histories. Inspect each band to understand what clinical features define it.</td>
+    </tr>
+    <tr>
+      <td>Rows that don't match their neighbours</td>
+      <td><strong>Anomalous patients.</strong> May represent distinct clinical subtypes, miscoded records, or patients who transferred care mid-observation.</td>
+    </tr>
+    <tr>
+      <td>Short dashes in DEATH column</td>
+      <td>Patients with a recorded death event. Single-event domains appear as isolated marks because they have only one occurrence by definition.</td>
+    </tr>
+    <tr>
+      <td>Bright MEASUREMENT + bright DRUG, sparse CONDITION</td>
+      <td>Possible coding pattern: labs and prescriptions are captured but diagnoses are under-coded — common in some EHR configurations or specialty settings.</td>
+    </tr>
+    <tr>
+      <td>All patients white in one domain</td>
+      <td>That domain may not be populated in your CDM (e.g., OBSERVATION is often sparse), or the concept extraction missed records due to vocabulary mapping gaps.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="quilt-controls">Controls reference</h3>
+
+<table>
+  <thead><tr><th>Control</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Clusters</strong></td><td>Filter to specific cluster(s). Deselect a cluster to remove its patients from the quilt and compare the remaining groups side-by-side.</td></tr>
+    <tr><td><strong>Domains</strong></td><td>Toggle individual domains on/off. Hiding high-volume domains like VISIT can reveal clearer patterns in clinical domains.</td></tr>
+    <tr><td><strong>Priority Tier</strong></td><td>Show only High / Medium / Low priority patients. Useful for focusing on the most anomalous subgroup.</td></tr>
+    <tr><td><strong>Sort Patients By</strong></td><td><em>cluster</em> (default) groups similar patients together. <em>rank</em> puts the most anomalous patients at top. <em>subject_id</em> is arbitrary.</td></tr>
+    <tr><td><strong>Cell Value</strong></td><td><em>log1p_count</em> compresses high-count cells (best default). <em>binary</em> shows presence/absence, ignoring volume. <em>count</em> shows raw event counts.</td></tr>
+    <tr><td><strong>Time Window slider</strong></td><td>Restrict to a subset of windows. Focus on just the pre-index period to examine prior history, or post-index to examine outcomes.</td></tr>
+    <tr><td><strong>Click a cell</strong></td><td>Selects that patient. A blue info bar appears below with ID, cluster, and priority tier. Click "View Trajectory" to jump to their full clinical timeline.</td></tr>
+    <tr><td><strong>Download PNG / SVG</strong></td><td>Exports a static ggplot2 version of the current quilt view.</td></tr>
+  </tbody>
+</table>
+
+<!-- ══════════════════ ANOMALY ══════════════════ -->
+<h2 id="anomaly">7. Anomaly Explorer</h2>
 
 <h3>UMAP scatter plot</h3>
-<p>UMAP (Uniform Manifold Approximation and Projection) is a dimensionality
-reduction algorithm. It compresses hundreds of clinical features (condition ×
-time window, drug × time window, …) into a 2-D map where:</p>
+<p>UMAP (Uniform Manifold Approximation and Projection) compresses the
+patient feature matrix — hundreds of domain × time-window counts — into
+a 2-D map preserving local structure.</p>
+
 <ul>
-  <li><strong>Nearby points = similar patients</strong> — they share similar
-      clinical histories across domains and time windows.</li>
-  <li><strong>Distant points = dissimilar patients</strong> — different clinical
-      histories, different disease trajectories, or different data patterns.</li>
-  <li><strong>Colour = cluster assignment</strong> — UMAP clusters visible groups;
-      each colour is one algorithmically identified subgroup.</li>
+  <li><strong>Nearby points = clinically similar patients.</strong> They share
+      similar patterns of diagnoses, medications, procedures, and visits
+      across time windows.</li>
+  <li><strong>Colour = cluster assignment.</strong> Each colour is one
+      algorithmically identified subgroup. Points with the same colour
+      were grouped by the k-means or hierarchical clustering algorithm.</li>
+  <li><strong>Isolated points far from all clusters</strong> are the most
+      likely outliers — patients whose clinical histories don't fit any
+      of the dominant patterns.</li>
+  <li><strong>Click any point</strong> to select that patient and see their
+      quilt row and trajectory.</li>
 </ul>
 
 <div class="callout warn">
-  <strong>Important</strong>
+  <span class="label">Interpretation caution</span>
   UMAP distances are not linearly interpretable. Two points 5 units apart
   are not necessarily "twice as different" as two points 2.5 units apart.
-  Focus on the topology (which groups exist, which patients are isolated)
-  rather than exact distances.
+  Focus on the <em>topology</em> (which groups exist, which patients are
+  isolated) rather than exact positions or distances.
 </div>
 
 <h3>Anomaly score</h3>
-<p>The anomaly score (0–1, higher = more unusual) comes from an
-<strong>isolation forest</strong>: a tree-based algorithm that identifies patients
-whose feature combinations are rare. High anomaly score means the patient's
-clinical history is difficult to describe with the same rules that describe
-most other patients.</p>
+<p>The anomaly score (0–1) comes from an <strong>isolation forest</strong>
+— a tree-based algorithm that identifies patients whose feature combinations
+are rare. High scores indicate patients whose clinical history is difficult
+to describe with the same rules that work for most of the cohort.</p>
 
 <table>
-  <tr><th>Score range</th><th>Interpretation</th></tr>
-  <tr>
-    <td>0.0 – 0.4</td>
-    <td>Typical patient — pattern similar to the majority of the cohort.</td>
-  </tr>
-  <tr>
-    <td>0.4 – 0.6</td>
-    <td>Moderately unusual — may be on the boundary between subgroups.</td>
-  </tr>
-  <tr>
-    <td>0.6 – 1.0</td>
-    <td>Highly unusual — rare combination of clinical features. Warrants
-        clinical review: could be a distinct subtype, miscoded, or have
-        genuine clinical complexity.</td>
-  </tr>
+  <thead><tr><th>Score</th><th>Interpretation</th><th>Suggested action</th></tr></thead>
+  <tbody>
+    <tr><td>0.0 – 0.4</td><td>Typical patient — similar to the majority of the cohort.</td><td>Use as controls when interpreting findings from high-score patients.</td></tr>
+    <tr><td>0.4 – 0.6</td><td>Moderately unusual — may be on the boundary between subgroups or have atypical but not rare data.</td><td>Review in context of their cluster assignment.</td></tr>
+    <tr><td>0.6 – 1.0</td><td><strong>Highly unusual</strong> — rare combination of clinical features.</td><td>Prioritise for clinical review. Could be a distinct subtype, data error, or genuinely complex patient.</td></tr>
+  </tbody>
 </table>
 
-<h3>How to use it</h3>
-<ol>
-  <li>Look for patients isolated from all clusters (lone points far from
-      any group) — these are the highest-priority anomalies.</li>
-  <li>Look for small tight clusters away from the main mass — potential
-      rare subtypes.</li>
-  <li>Click any point to select that patient and view their quilt row
-      and trajectory.</li>
-</ol>
+<!-- ══════════════════ SELECTOR ══════════════════ -->
+<h2 id="selector">8. Patient Selector</h2>
 
-<!-- ======================================================= -->
-<h2 id="selector">4. Patient Selector</h2>
-
-<p>The Patient Selector is a ranked priority queue. It answers the question:
+<p>The Patient Selector is a priority-ranked review queue. It answers:
 <em>"If I can only review N patients, which ones should I look at first?"</em></p>
 
-<h3>Priority score components</h3>
+<h3>Priority score</h3>
 <table>
-  <tr><th>Component</th><th>Weight</th><th>What it captures</th></tr>
-  <tr>
-    <td>Anomaly score</td>
-    <td>50%</td>
-    <td>Isolation forest unusualness (see above).</td>
-  </tr>
-  <tr>
-    <td>Cluster noise flag</td>
-    <td>25%</td>
-    <td>Patients not assigned to any cluster (cluster ID = −1 or 0) receive
-        a bonus — they may represent outliers the algorithm could not
-        classify.</td>
-  </tr>
-  <tr>
-    <td>Data sparsity</td>
-    <td>25%</td>
-    <td>Proportion of (domain × window) cells with zero events. Sparse
-        patients may have incomplete data or represent a qualitatively
-        different care pattern.</td>
-  </tr>
+  <thead><tr><th>Component</th><th>Default weight</th><th>What it measures</th></tr></thead>
+  <tbody>
+    <tr><td>Anomaly score</td><td>50%</td><td>How unusual the patient's feature combination is (isolation forest).</td></tr>
+    <tr><td>Cluster noise flag</td><td>25%</td><td>Bonus for patients not assigned to any cluster (ID = −1 or 0). These couldn't be classified — often true outliers.</td></tr>
+    <tr><td>Data sparsity</td><td>25%</td><td>Proportion of (domain × window) cells with zero events. Sparse patients may have incomplete records or a qualitatively different care pattern.</td></tr>
+  </tbody>
 </table>
 
 <h3>Priority tiers</h3>
 <ul>
-  <li><strong>High (red)</strong> — Top third of the ranked list. Most unusual,
-      sparse, or unclassified. Review first.</li>
-  <li><strong>Medium (amber)</strong> — Middle third. Borderline cases or
-      patients on cluster boundaries.</li>
-  <li><strong>Low (green)</strong> — Bottom third. Most typical, well-classified,
-      data-rich patients. Useful as controls when interpreting findings.</li>
+  <li><span style="color:#dc2626; font-weight:700;">High (red)</span> — Top third. Most unusual, sparse, or unclassified. Review first.</li>
+  <li><span style="color:#d97706; font-weight:700;">Medium (amber)</span> — Middle third. Borderline cases or patients on cluster boundaries.</li>
+  <li><span style="color:#16a34a; font-weight:700;">Low (green)</span> — Bottom third. Typical, well-classified, data-rich patients. Useful as controls.</li>
 </ul>
 
-<div class="callout">
-  <strong>Use case: clinician meeting preparation</strong>
-  Export the top 10–20 high-priority patients as a CSV, pull their trajectories,
-  and use them as discussion cases. This is faster and more targeted than random
-  sampling.
+<div class="callout tip">
+  <span class="label">Use case: targeted chart review</span>
+  Export the top 10–20 high-priority patients using the CSV download,
+  pull their full medical records, and bring them to a clinician meeting.
+  This is faster and more informative than random sampling.
 </div>
 
-<!-- ======================================================= -->
-<h2 id="trajectory">5. Trajectory Viewer</h2>
+<!-- ══════════════════ TRAJECTORY ══════════════════ -->
+<h2 id="trajectory">9. Trajectory Viewer</h2>
 
-<p>The Trajectory Viewer shows a <strong>per-patient swim-lane timeline</strong>
-— all recorded clinical events for a single selected patient plotted against
-days from their cohort index date.</p>
+<p>The Trajectory Viewer shows the complete clinical timeline for a single
+selected patient — all recorded OMOP events plotted against days from their
+cohort index date.</p>
 
-<h3>How to read it</h3>
+<h3>Reading the timeline</h3>
 <ul>
-  <li><strong>X-axis</strong> — Days relative to the index date. Negative =
-      before index, positive = after. The dashed vertical line at day 0 is
-      the index date.</li>
-  <li><strong>Y-axis</strong> — One row per concept (e.g., "Type 2 diabetes
-      mellitus", "Metformin 500mg", "HbA1c").</li>
-  <li><strong>Each dot</strong> — One recorded event. Hover for exact date,
-      value (if available), and concept name.</li>
-  <li><strong>Colour</strong> — Domain (red = condition, blue = drug, etc.).</li>
+  <li><strong>X-axis</strong> — Days relative to the index date. The dashed
+      vertical line at day 0 is the index event.</li>
+  <li><strong>Y-axis</strong> — One row per clinical concept
+      (e.g., "Type 2 diabetes mellitus", "Metformin 500 mg", "HbA1c").</li>
+  <li><strong>Each dot</strong> — One recorded event. Hover for the exact
+      date, value (for lab results), and full concept name.</li>
+  <li><strong>Colour</strong> — Domain (red = condition, blue = drug,
+      green = procedure, purple = measurement, teal = visit).</li>
 </ul>
 
 <h3>What to look for</h3>
 <table>
-  <tr><th>Observation</th><th>Possible meaning</th></tr>
-  <tr>
-    <td>Dense dots before index, sparse after</td>
-    <td>Patient has a long prior history but limited follow-up — may have
-        transferred care or left the system.</td>
-  </tr>
-  <tr>
-    <td>Drug starts immediately after a condition code</td>
-    <td>Treatment initiation — clinically expected (e.g., metformin after
-        T2DM diagnosis).</td>
-  </tr>
-  <tr>
-    <td>Measurement dots cluster around drug changes</td>
-    <td>Monitoring behaviour — lab values being checked in response to
-        treatment.</td>
-  </tr>
-  <tr>
-    <td>Condition codes appear only before index, never after</td>
-    <td>Possible historical coding (condition coded once, never re-entered)
-        or condition resolved.</td>
-  </tr>
-  <tr>
-    <td>Very long span between first and last event</td>
-    <td>Long-term follow-up — useful for longitudinal analyses.</td>
-  </tr>
-</table>
-
-<div class="callout tip">
-  <strong>Clinical review tip</strong>
-  The trajectory is built from <em>structured EHR data</em> only —
-  it does not include free-text notes, images, or out-of-system events.
-  Treat it as a structured evidence summary, not a complete clinical picture.
-  Always confirm findings with source records before clinical action.
-</div>
-
-<!-- ======================================================= -->
-<h2 id="hypothesis">6. Hypothesis Panel</h2>
-
-<p>The Hypothesis Panel automatically tests whether any clinical features
-differ significantly between clusters. Each row is a
-<strong>candidate research question</strong>.</p>
-
-<h3>Column definitions</h3>
-<table>
-  <tr><th>Column</th><th>Meaning</th></tr>
-  <tr>
-    <td><code>cluster_a</code>, <code>cluster_b</code></td>
-    <td>The two clusters being compared.</td>
-  </tr>
-  <tr>
-    <td><code>domain</code></td>
-    <td>Which OMOP domain the feature is from (condition, drug, etc.).</td>
-  </tr>
-  <tr>
-    <td><code>concept_name</code></td>
-    <td>The specific condition, drug, procedure, or measurement being tested.</td>
-  </tr>
-  <tr>
-    <td><code>window_label</code></td>
-    <td>Which time window showed the difference.</td>
-  </tr>
-  <tr>
-    <td><code>effect_size</code></td>
-    <td>Magnitude of the difference: rank-biserial correlation (continuous)
-        or Cramér's V (binary). Values closer to 1 indicate a larger
-        difference between clusters.</td>
-  </tr>
-  <tr>
-    <td><code>p_value_adjusted</code></td>
-    <td>BH-corrected p-value. Smaller = less likely to be due to chance.
-        Treat anything > 0.1 with scepticism; use as a ranking signal
-        rather than a definitive test.</td>
-  </tr>
-  <tr>
-    <td><code>direction</code></td>
-    <td>Which cluster has <em>more</em> of this feature.</td>
-  </tr>
+  <thead><tr><th>Pattern</th><th>Possible meaning</th></tr></thead>
+  <tbody>
+    <tr><td>Dense dots before index, sparse after</td><td>Patient has a long prior history but limited follow-up — may have transferred care or left the system.</td></tr>
+    <tr><td>Drug starts immediately after a condition code</td><td>Treatment initiation — clinically expected (e.g., metformin after T2DM diagnosis).</td></tr>
+    <tr><td>Lab dots cluster around drug changes</td><td>Monitoring behaviour — lab values being checked in response to treatment changes.</td></tr>
+    <tr><td>Condition codes only before index, none after</td><td>Possible historical coding (condition entered once, never re-entered) or condition resolved.</td></tr>
+    <tr><td>Very long span between first and last event</td><td>Long-term follow-up — suitable for longitudinal analyses.</td></tr>
+    <tr><td>Single event at very negative day</td><td>Historical record from long before cohort entry — may be relevant as chronic condition history.</td></tr>
+  </tbody>
 </table>
 
 <div class="callout warn">
-  <strong>Statistical caution</strong>
-  These are exploratory tests on clusters that were defined by the same
-  data. This introduces circularity: you are more likely to find
-  differences between clusters that were constructed to be different.
-  All findings must be validated in an independent dataset or via
-  pre-specified analysis.
+  <span class="label">Structured data only</span>
+  The trajectory is built from structured EHR records only. It does not
+  include free-text clinical notes, imaging reports, waveforms, or
+  out-of-network events. Always confirm findings with full source records
+  before drawing clinical conclusions.
 </div>
 
-<h3>How to use it</h3>
-<ol>
-  <li>Click <strong>Generate Hypotheses</strong> after the cohort has loaded.</li>
-  <li>Sort by <code>p_value_adjusted</code> to see the strongest signals.</li>
-  <li>Read each row as: <em>"Cluster A patients have more/fewer [concept] in
-      [time window] than Cluster B patients."</em></li>
-  <li>Download the table as CSV and bring it to a clinician meeting for
-      discussion and expert validation.</li>
-</ol>
-
-<!-- ======================================================= -->
-<h2 id="demographics">7. Demographics Tab</h2>
-
-<p>The Demographics tab summarises the cohort's population characteristics
-and data availability.</p>
-
-<h3>Value boxes (top row)</h3>
+<h3>Controls</h3>
 <ul>
-  <li><strong>N patients</strong> — Total cohort size after applying all
-      inclusion/exclusion criteria from the JSON definition.</li>
-  <li><strong>Median follow-up</strong> — Median time between cohort entry
-      (index date) and cohort exit. Short follow-up limits the ability to
-      observe outcomes.</li>
-  <li><strong>Median age at index</strong> — Calculated from
-      <code>year_of_birth</code> and <code>cohort_start_date</code>. Note:
-      OMOP stores birth year, not exact date, so age has ±1 year uncertainty.</li>
-  <li><strong>% with death recorded</strong> — Patients with a death event
-      in <code>death</code> domain. This is a lower bound — death capture
-      is often incomplete in EHR data.</li>
+  <li><strong>Domains</strong> — Toggle which OMOP domains to show.</li>
+  <li><strong>Top N concepts</strong> — Limit each domain to its N most frequent concepts to reduce visual clutter.</li>
+  <li><strong>Day range</strong> — Zoom into a specific time period around the index date.</li>
 </ul>
 
-<h3>Data density heatmap (bottom)</h3>
-<p>The data density heatmap shows, for each OMOP domain and each calendar
-month, how many patients in the cohort had at least one event recorded.</p>
+<!-- ══════════════════ HYPOTHESIS ══════════════════ -->
+<h2 id="hypothesis">10. Hypothesis Panel</h2>
 
-<ul>
-  <li><strong>Horizontal bands</strong> — Domains. Brighter = more patients
-      with data in that domain that month.</li>
-  <li><strong>Temporal gaps</strong> — White columns indicate months with
-      little or no data. This may reflect:
-      <ul>
-        <li>Gaps in data feed to the CDM (EHR data not yet loaded)</li>
-        <li>Periods when the health system was not operational</li>
-        <li>Seasonal variation in care utilisation</li>
-      </ul>
-  </li>
-  <li><strong>Domain imbalance</strong> — If CONDITION is always bright but
-      MEASUREMENT is mostly white, the CDM may have incomplete lab data.</li>
-</ul>
+<p>The Hypothesis Panel automatically tests whether clinical features differ
+between clusters. Results appear automatically after cohort load. Each row
+is a <strong>candidate research question</strong>, not a confirmed finding.</p>
 
-<div class="callout">
-  <strong>Interpreting data density for your cohort</strong>
-  Before drawing conclusions from any analysis, verify that data density
-  is relatively stable across the observation period. A sudden drop in
-  density near the current date often indicates a data lag, not a real
-  decrease in clinical events.
-</div>
-
-<!-- ======================================================= -->
-<h2 id="workflow">8. Recommended Workflow</h2>
-
-<ol>
-  <li>
-    <strong>Check Demographics first.</strong>
-    Confirm cohort size, age distribution, and data density. If follow-up
-    is very short (&lt;6 months median) or density drops off sharply in
-    recent months, adjust your time window expectations accordingly.
-  </li>
-  <li>
-    <strong>Read the Quilt at a glance.</strong>
-    Sort by cluster (default). Do the clusters look visually distinct? Are
-    there groups of unusually sparse patients? Any domains that are
-    uniformly empty across all patients?
-  </li>
-  <li>
-    <strong>Explore the Anomaly Explorer.</strong>
-    Identify patients isolated from clusters. Note whether they land in
-    expected or unexpected regions of the UMAP.
-  </li>
-  <li>
-    <strong>Review 3–5 high-priority patients.</strong>
-    From the Patient Selector, pick the top high-priority cases. Click each
-    one to load their Trajectory Viewer. Do they look like genuine clinical
-    outliers, or like data-quality issues (very sparse data, impossible
-    chronology)?
-  </li>
-  <li>
-    <strong>Generate hypotheses.</strong>
-    Run the Hypothesis Panel. Take the top 5–10 findings to a clinician.
-    The question to ask: <em>"Does this difference between clusters make
-    clinical sense?"</em>
-  </li>
-  <li>
-    <strong>Iterate.</strong>
-    Change domain filters, time window ranges, or the sort order. Each view
-    reveals different structure in the data.
-  </li>
-</ol>
-
-<!-- ======================================================= -->
-<h2 id="limits">9. Limitations &amp; Caveats</h2>
-
+<h3>Column definitions</h3>
 <table>
-  <tr><th>Limitation</th><th>Implication</th></tr>
-  <tr>
-    <td>OMOP CDM is structured data only</td>
-    <td>Free-text notes, imaging, waveforms, and out-of-network events are
-        absent. The "clinical picture" in CohortIntelligence is always
-        partial.</td>
-  </tr>
-  <tr>
-    <td>Concepts depend on vocabulary coverage</td>
-    <td>If your institution uses local codes not mapped to standard OMOP
-        concepts, events will not appear. Use
-        <code>check_cohort_json()</code> to verify concept coverage.</td>
-  </tr>
-  <tr>
-    <td>Unsupervised ML is sensitive to feature engineering choices</td>
-    <td>Changing time window breaks, minimum concept frequency, or value
-        encoding can change cluster assignments significantly. Results are
-        exploratory, not definitive.</td>
-  </tr>
-  <tr>
-    <td>Death capture is often incomplete</td>
-    <td>The <code>death</code> domain only captures deaths recorded in your
-        health system. In-hospital and linkage-based mortality is not
-        captured unless imported to the CDM.</td>
-  </tr>
-  <tr>
-    <td>Small cohorts (&lt; 30 patients)</td>
-    <td>UMAP and isolation forest produce unreliable results. Cluster
-        structure may be noise. Hypothesis tests are underpowered.</td>
-  </tr>
-  <tr>
-    <td>Circular hypothesis testing</td>
-    <td>Hypotheses are tested on the same data used to define clusters.
-        All findings require external validation.</td>
-  </tr>
+  <thead><tr><th>Column</th><th>Definition</th></tr></thead>
+  <tbody>
+    <tr><td><code>cluster_a</code>, <code>cluster_b</code></td><td>The two clusters being compared.</td></tr>
+    <tr><td><code>domain</code></td><td>OMOP domain the feature belongs to.</td></tr>
+    <tr><td><code>concept_name</code></td><td>The condition, drug, procedure, or measurement tested.</td></tr>
+    <tr><td><code>window_label</code></td><td>Time window where the difference was detected.</td></tr>
+    <tr><td><code>effect_size</code></td><td>Magnitude of difference. Rank-biserial correlation (continuous) or Cramér's V (binary). Range 0–1; higher = larger difference.</td></tr>
+    <tr><td><code>p_value_adjusted</code></td><td>Benjamini-Hochberg corrected p-value. Use as a ranking signal, not a definitive test.</td></tr>
+    <tr><td><code>direction</code></td><td>Which cluster has more of this feature (<code>higher_in_cluster_a</code> or <code>higher_in_cluster_b</code>).</td></tr>
+  </tbody>
 </table>
 
-<hr style="margin: 48px 0 24px; border: none; border-top: 1px solid #ddd;">
-<p style="font-size: 0.83em; color: #888;">
-  CohortIntelligence v0.1.0 &nbsp;|&nbsp;
-  Johns Hopkins University &nbsp;|&nbsp;
-  OMOP CDM v5.3/5.4 &nbsp;|&nbsp;
-  Not for clinical decision-making.
+<h3>Statistical method</h3>
+<ul>
+  <li><strong>Continuous features</strong> — Wilcoxon rank-sum test; effect size = rank-biserial correlation.</li>
+  <li><strong>Binary features</strong> — Fisher's exact test; effect size = Cramér's V.</li>
+  <li><strong>Correction</strong> — Benjamini-Hochberg false discovery rate across all pairwise tests.</li>
+</ul>
+
+<div class="callout caution">
+  <span class="label">Circular testing — critical caveat</span>
+  These hypotheses are tested on the <em>same data</em> used to define the
+  clusters. This creates circularity: clusters are designed to be different,
+  so you will almost always find differences between them. Treat all
+  findings as <strong>leads for external validation</strong>, not
+  as independently confirmed results. Never report these p-values as
+  pre-specified statistical tests.
+</div>
+
+<h3>How to use results</h3>
+<ol>
+  <li>Sort by <code>p_value_adjusted</code> ascending to see the strongest signals.</li>
+  <li>Read each row as: <em>"Patients in Cluster A have more/fewer [concept] in [window] than Cluster B."</em></li>
+  <li>Download the CSV and bring it to a clinician meeting for expert validation of face validity.</li>
+  <li>Use validated findings to design a formal pre-specified analysis in an independent cohort or using CohortDiagnostics.</li>
+</ol>
+
+<!-- ══════════════════ DEMOGRAPHICS ══════════════════ -->
+<h2 id="demographics">11. Demographics Tab</h2>
+
+<h3>Value boxes</h3>
+<table>
+  <thead><tr><th>Box</th><th>Meaning</th><th>Caveat</th></tr></thead>
+  <tbody>
+    <tr><td><strong>N patients</strong></td><td>Total cohort size after all inclusion/exclusion criteria.</td><td>—</td></tr>
+    <tr><td><strong>Median follow-up</strong></td><td>Median days between cohort entry and exit (cohort_start_date to cohort_end_date).</td><td>Cohort exit definition varies by JSON. May not reflect actual observation period end.</td></tr>
+    <tr><td><strong>Median age at index</strong></td><td>Calculated from year_of_birth and cohort_start_date.</td><td>OMOP stores birth year (not date) — age has ±1 year uncertainty.</td></tr>
+    <tr><td><strong>% with death recorded</strong></td><td>Patients with any record in the death domain.</td><td><em>Lower bound.</em> Death capture in EHR data is notoriously incomplete — in-hospital only, or only if linked to vital statistics.</td></tr>
+  </tbody>
+</table>
+
+<h3>Data density heatmap</h3>
+<p>Shows how many cohort patients had at least one event per domain per
+calendar month. Use it to assess data completeness before drawing
+conclusions.</p>
+
+<ul>
+  <li><strong>White columns</strong> — No data in that month for that domain. Could be a CDM data lag, a site-level gap, or a genuine absence of events.</li>
+  <li><strong>Domain imbalance</strong> — If CONDITION is always bright but MEASUREMENT is mostly white, the CDM may have incomplete lab data or labs may be in the OBSERVATION domain instead.</li>
+  <li><strong>Recent drop-off</strong> — Very common. CDM data feeds often have a 3–6 month lag. A sharp drop in the most recent months usually indicates a data lag, not a real clinical change.</li>
+</ul>
+
+<!-- ══════════════════ DOMAINS ══════════════════ -->
+<h2 id="domains">12. OMOP Domains Reference</h2>
+
+<div class="domain-grid">
+  <div class="domain-card d-condition">
+    <div class="name">Condition</div>
+    <div class="desc">Diagnoses from condition_occurrence. Includes ICD codes mapped to SNOMED standard concepts.</div>
+  </div>
+  <div class="domain-card d-drug">
+    <div class="name">Drug</div>
+    <div class="desc">Prescriptions and dispensing from drug_exposure. Mapped to RxNorm ingredient level.</div>
+  </div>
+  <div class="domain-card d-procedure">
+    <div class="name">Procedure</div>
+    <div class="desc">Clinical procedures from procedure_occurrence. CPT, ICD procedure codes mapped to SNOMED.</div>
+  </div>
+  <div class="domain-card d-measurement">
+    <div class="name">Measurement</div>
+    <div class="desc">Lab values and vitals from measurement. Includes numeric values (e.g., HbA1c = 7.2).</div>
+  </div>
+  <div class="domain-card d-observation">
+    <div class="name">Observation</div>
+    <div class="desc">Clinical observations from observation. Includes social history, clinical findings, survey results.</div>
+  </div>
+  <div class="domain-card d-visit">
+    <div class="name">Visit</div>
+    <div class="desc">Healthcare encounters from visit_occurrence. Includes inpatient, outpatient, ER.</div>
+  </div>
+  <div class="domain-card d-death">
+    <div class="name">Death</div>
+    <div class="desc">Mortality events from death table. Single event per patient. Often incomplete — only captures in-system deaths.</div>
+  </div>
+</div>
+
+<!-- ══════════════════ TEMPLATES ══════════════════ -->
+<h2 id="templates">13. Cohort Templates</h2>
+
+<h3>T2DM.json — Type 2 Diabetes Mellitus on Metformin</h3>
+<p>This template selects adults with a new T2DM diagnosis who initiate
+metformin therapy within one year.</p>
+
+<table>
+  <thead><tr><th>#</th><th>Criterion</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>T2DM diagnosis</td><td>SNOMED 443732, 201826, 4193704 — plus all descendants and mapped codes (ICD-10: E11.*)</td></tr>
+    <tr><td>2</td><td>Age ≥ 18</td><td>At the index date (first qualifying T2DM occurrence)</td></tr>
+    <tr><td>3</td><td>Prior observation ≥ 365 days</td><td>Must have 365 days of continuous observation period before the index date</td></tr>
+    <tr><td>4</td><td>Metformin prescription</td><td>RxNorm 1503297 (metformin, all formulations) within 0–365 days <em>after</em> index</td></tr>
+    <tr><td>5</td><td>First occurrence only</td><td>Only the first-ever qualifying T2DM event counts as index</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <span class="label">Why this returns 0 patients in some CDMs</span>
+  The 365-day prior observation window is the most common filter. Patients
+  registered less than a year before their first T2DM code fail this gate.
+  The metformin requirement excludes T2DM patients managed with diet, other
+  agents, or insulin first. Run <code>check_cohort_json()</code> to see
+  how many patients clear each gate.
+</div>
+
+<h3>DM_infection.json — Adult Dermatomyositis (2-hit phenotype)</h3>
+<p>This template selects adult dermatomyositis patients confirmed by two
+separate diagnoses (a standard phenotyping approach to improve specificity).</p>
+
+<table>
+  <thead><tr><th>#</th><th>Criterion</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>DM diagnosis</td><td>SNOMED 80182, 4270868, 4081250, 4344161 + all descendants</td></tr>
+    <tr><td>2</td><td>Excluded subtypes</td><td>Juvenile DM (606434, 37395588, 606385), neonatal DM (36674477), childhood DM (4005037) — all with descendants</td></tr>
+    <tr><td>3</td><td>2-hit confirmation</td><td>A second DM diagnosis 30–365 days <em>before</em> the index event</td></tr>
+    <tr><td>4</td><td>Age ≥ 18</td><td>At index date</td></tr>
+    <tr><td>5</td><td>Censored at death</td><td>Cohort ends at the death event if recorded</td></tr>
+  </tbody>
+</table>
+
+<p>To use your own cohort: export from ATLAS (<em>Export → JSON</em>) and
+pass the path to <code>launch_cohort_intelligence(json_path = ...)</code>.</p>
+
+<!-- ══════════════════ WORKFLOW ══════════════════ -->
+<h2 id="workflow">14. Recommended Workflow</h2>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h4>Verify cohort before launching</h4>
+      <p>Run <code>check_cohort_json(connector, json_path)</code> in the
+      R console. Confirm concept IDs are in the vocabulary and
+      <code>candidate_count &gt; 0</code>.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h4>Check Demographics first</h4>
+      <p>Confirm cohort size, age distribution, and data density. If the
+      density heatmap shows white columns in recent months, account for
+      data lag in your analysis window.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h4>Read the Quilt at a glance</h4>
+      <p>Sort by cluster (default). Do the cluster bands look visually
+      distinct? Are any domains uniformly empty? Any patients that clearly
+      don't belong with their neighbours?</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h4>Explore the Anomaly Explorer</h4>
+      <p>Identify isolated points on the UMAP. Note whether they have high
+      anomaly scores. These are candidates for clinical review.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <h4>Review 3–5 high-priority trajectories</h4>
+      <p>From the Patient Selector, click the top high-priority patients.
+      Do their trajectories look like genuine clinical outliers or like
+      data-quality issues (impossible chronology, all events on one day)?</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <h4>Validate hypotheses with a clinician</h4>
+      <p>Download the Hypothesis Panel CSV. For each top finding, ask:
+      <em>"Does this difference between clusters make clinical sense? Is
+      it a known pattern or a new signal worth investigating?"</em></p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">7</div>
+    <div class="step-body">
+      <h4>Iterate</h4>
+      <p>Change time window ranges, try binary vs. log1p encoding, filter
+      to a single cluster, or adjust the priority weights. Each view
+      reveals different structure in the cohort.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ TROUBLESHOOTING ══════════════════ -->
+<h2 id="trouble">15. Troubleshooting</h2>
+
+<table>
+  <thead><tr><th>Problem</th><th>Most likely cause</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>0 patients after JSON load</td>
+      <td>Prior observation window or drug inclusion rule filtering everyone out</td>
+      <td>Run <code>check_cohort_json(connector, json_path)</code> to diagnose each gate; try a simpler JSON with no drug inclusion rule</td>
+    </tr>
+    <tr>
+      <td><code>argument is of length zero</code></td>
+      <td>CirceR SQL generation returned empty output</td>
+      <td>Re-run with <code>fetch_cohort_from_json(connector, json_path, verbose = TRUE)</code> to inspect the SQL</td>
+    </tr>
+    <tr>
+      <td><code>INSUFFICIENT_PERMISSIONS</code></td>
+      <td>CDM schema requires write access for temp tables</td>
+      <td>CohortIntelligence uses read-only CTEs — ensure you're using the latest version</td>
+    </tr>
+    <tr>
+      <td>UMAP/clustering not running</td>
+      <td><code>uwot</code> or <code>isotree</code> not installed</td>
+      <td><code>install.packages(c("uwot", "isotree"))</code></td>
+    </tr>
+    <tr>
+      <td>Hypothesis Panel empty</td>
+      <td>Only one cluster (all patients in one group)</td>
+      <td>Hypotheses require ≥2 clusters. If the ML pipeline produced only one cluster, increase cohort size or reduce <code>min_concept_freq</code></td>
+    </tr>
+    <tr>
+      <td>Demographics tab shows "N/A" for age</td>
+      <td>Person demographics not extracted or birth_year missing</td>
+      <td>Ensure <code>person</code> table has data; check CDM schema access</td>
+    </tr>
+    <tr>
+      <td>Very slow loading on large cohort</td>
+      <td>Feature matrix has thousands of concepts</td>
+      <td>Increase <code>min_concept_freq</code> (default 10) or narrow time windows</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ══════════════════ LIMITATIONS ══════════════════ -->
+<h2 id="limits">16. Limitations &amp; Caveats</h2>
+
+<table>
+  <thead><tr><th>Limitation</th><th>Implication for interpretation</th></tr></thead>
+  <tbody>
+    <tr><td>Structured data only</td><td>Free-text notes, imaging, waveforms, and out-of-network events are absent. The "clinical picture" in CohortIntelligence is always partial.</td></tr>
+    <tr><td>Vocabulary mapping</td><td>If your site uses unmapped local codes, those events will not appear. Use <code>check_cohort_json()</code> to verify concept coverage before analysing results.</td></tr>
+    <tr><td>ML is feature-engineering-sensitive</td><td>Changing time window breaks, minimum concept frequency, or value encoding can significantly change cluster assignments and anomaly scores.</td></tr>
+    <tr><td>Death capture incomplete</td><td>Only in-system deaths are captured. True mortality rates are almost always higher than what the OMOP death domain shows.</td></tr>
+    <tr><td>Small cohorts (&lt;30 patients)</td><td>UMAP layout is unreliable, isolation forest scores are unstable, and hypothesis tests are severely underpowered.</td></tr>
+    <tr><td>Circular hypothesis testing</td><td>Hypotheses are tested on the same data used to define clusters. All findings require external validation before reporting.</td></tr>
+    <tr><td>No causal inference</td><td>CohortIntelligence identifies associations and patterns. It cannot establish causation, counterfactuals, or treatment effects.</td></tr>
+  </tbody>
+</table>
+
+<!-- ══════════════════ FAQ ══════════════════ -->
+<h2 id="faq">17. Frequently Asked Questions</h2>
+
+<h4>My cohort has 546 candidate patients but the dashboard shows 0. Why?</h4>
+<p>The candidate count from <code>check_cohort_json()</code> counts patients
+with any matching condition code — before inclusion rules are applied. The
+most common filters that remove all patients are: (1) the 365-day prior
+observation window in the T2DM template, and (2) the metformin-within-365-days
+rule. Run <code>fetch_cohort_from_json(connector, json_path, verbose = TRUE)</code>
+to print the full SELECT SQL and identify which JOIN or WHERE clause is removing
+everyone.</p>
+
+<h4>Why does the quilt show "Unassigned (0)" for all patients?</h4>
+<p>This means the clustering step did not assign any patient to a named cluster,
+usually because: (a) the feature matrix is too sparse (most patients have no
+events in most windows), (b) all patients ended up in a single cluster, or
+(c) the ML pipeline failed silently due to a missing package. Check the
+R console for <code>[CI]</code> messages after loading.</p>
+
+<h4>Can I use my own cohort definition?</h4>
+<p>Yes. Export any cohort from ATLAS (<em>Export → JSON</em>) and pass it via
+<code>json_path</code>. Any ATLAS cohort JSON valid for OMOP CDM ≥ 5.0 works.
+CohortIntelligence does not require an ATLAS server — only the JSON file.</p>
+
+<h4>Does CohortIntelligence write anything to the CDM?</h4>
+<p>No. The cohort SQL generated from a JSON file is executed as a single
+read-only CTE-based SELECT. No tables, temp tables, or views are created in
+the CDM schema. You need only SELECT permission on the CDM and vocabulary
+schemas.</p>
+
+<h4>What is the minimum cohort size for meaningful results?</h4>
+<p>At least 30 patients for basic exploration. For UMAP to produce meaningful
+topology, 50–100+ is recommended. Hypothesis testing between clusters requires
+at least 10–15 patients per cluster for the tests to have any power.</p>
+
+<h4>The Hypothesis Panel says "No significant hypotheses found." What does that mean?</h4>
+<p>Either: (a) there are genuinely no statistically different features between
+clusters at the current effect-size threshold, or (b) there is only one cluster.
+Try lowering <code>Min effect size</code> to 0.1 or re-running with
+<code>max_hypotheses = 50</code>.</p>
+
+<h4>How do I export results for a clinician who doesn't use R?</h4>
+<ul>
+  <li>Hypothesis Panel → Download CSV</li>
+  <li>Quilt → Download PNG or SVG</li>
+  <li>Patient Selector → export the DT table (copy-paste or print)</li>
+  <li>In R: <code>export_cohort_results(results, path = "output/")</code></li>
+</ul>
+
+<hr style="margin: 48px 0 24px; border: none; border-top: 1px solid #e2e8f0;">
+<p style="font-size: 0.8em; color: #94a3b8;">
+  CohortIntelligence v0.1.0 &nbsp;·&nbsp;
+  Johns Hopkins University &nbsp;·&nbsp;
+  OMOP CDM v5.3 / 5.4 &nbsp;·&nbsp;
+  For research use only. Not for clinical decision-making.
 </p>
 
+</main>
+</div>
+
+<script>
+// Highlight active nav link on scroll
+const sections = document.querySelectorAll('h2[id], h3[id]');
+const links = document.querySelectorAll('.nav a');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const a = document.querySelector('.nav a[href="#' + e.target.id + '"]');
+      if (a) a.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
 </body>
 </html>
