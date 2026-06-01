@@ -11,7 +11,7 @@ run_umap(
   min_dist = 0.1,
   metric = "euclidean",
   random_state = 42L,
-  method = c("umap", "spectral")
+  method = c("uwot", "umap", "spectral")
 )
 }
 \arguments{
@@ -28,12 +28,14 @@ plus numeric feature columns (from \code{\link[=build_feature_matrix]{build_feat
 
 \item{random_state}{Integer. Random seed. Default 42.}
 
-\item{method}{Character. \code{"umap"} uses the \code{umap} package;
-\code{"spectral"} is a pure-R spectral embedding fallback.}
+\item{method}{Character. \code{"uwot"} (recommended, pure R/C++), \code{"umap"}
+(legacy, may require Python), or \code{"spectral"} (pure-R fallback).}
 }
 \value{
 tibble(subject_id, umap_1, umap_2)
 }
 \description{
-Run UMAP dimensionality reduction on a patient feature matrix
+Uses \code{uwot::umap()} (pure C++, no Python dependency) as the primary
+engine, with a built-in spectral-layout fallback when \code{uwot} is not
+installed.
 }

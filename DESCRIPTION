@@ -37,6 +37,7 @@ Suggests:
     plotly (>= 4.10.4),
     ggplot2 (>= 3.5.0),
     DT (>= 0.33),
+    uwot (>= 0.1.14),
     umap (>= 0.2.10),
     cluster (>= 2.1.6),
     isotree (>= 0.6.0),

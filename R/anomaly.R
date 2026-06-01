@@ -1,13 +1,17 @@
 # anomaly.R
 # Unsupervised ML pipeline for CohortIntelligence.
-# Requires: umap, cluster, isotree (all in Suggests).
-# Pure-R spectral fallback in run_umap() -- no Python required.
+# UMAP: uses uwot (pure C++, no Python) with spectral fallback.
+# Clustering: cluster package. Anomaly: isotree.
 
 # ---------------------------------------------------------------------------
 # UMAP
 # ---------------------------------------------------------------------------
 
 #' Run UMAP dimensionality reduction on a patient feature matrix
+#'
+#' Uses `uwot::umap()` (pure C++, no Python dependency) as the primary
+#' engine, with a built-in spectral-layout fallback when `uwot` is not
+#' installed.
 #'
 #' @param feature_matrix Numeric matrix or tibble with `subject_id` column
 #'   plus numeric feature columns (from [build_feature_matrix()]`$wide`).
@@ -16,8 +20,8 @@
 #' @param min_dist Numeric. UMAP min_dist parameter. Default 0.1.
 #' @param metric Character. Distance metric. Default `"euclidean"`.
 #' @param random_state Integer. Random seed. Default 42.
-#' @param method Character. `"umap"` uses the `umap` package;
-#'   `"spectral"` is a pure-R spectral embedding fallback.
+#' @param method Character. `"uwot"` (recommended, pure R/C++), `"umap"`
+#'   (legacy, may require Python), or `"spectral"` (pure-R fallback).
 #'
 #' @return tibble(subject_id, umap_1, umap_2)
 #' @export
@@ -27,11 +31,22 @@ run_umap <- function(feature_matrix,
                       min_dist     = 0.1,
                       metric       = "euclidean",
                       random_state = 42L,
-                      method       = c("umap","spectral")) {
+                      method       = c("uwot","umap","spectral")) {
   method <- match.arg(method)
 
-  if (!requireNamespace("umap", quietly = TRUE)) {
-    message("Package 'umap' not installed; falling back to spectral method.")
+  # Resolve to an available backend
+  if (method == "uwot" && !requireNamespace("uwot", quietly = TRUE)) {
+    if (requireNamespace("umap", quietly = TRUE)) {
+      method <- "umap"
+    } else {
+      message("Neither 'uwot' nor 'umap' installed; using spectral fallback.",
+              "\n  Install uwot: install.packages('uwot')")
+      method <- "spectral"
+    }
+  }
+  if (method == "umap" && !requireNamespace("umap", quietly = TRUE)) {
+    message("Package 'umap' not installed; using spectral fallback.",
+            "\n  Install uwot: install.packages('uwot')")
     method <- "spectral"
   }
 
@@ -41,7 +56,18 @@ run_umap <- function(feature_matrix,
 
   set.seed(random_state)
 
-  coords <- if (method == "umap") {
+  coords <- if (method == "uwot") {
+    uwot::umap(
+      X,
+      n_components = as.integer(n_components),
+      n_neighbors  = min(as.integer(n_neighbors), nrow(X) - 1L),
+      min_dist     = min_dist,
+      metric       = metric,
+      ret_model    = FALSE,
+      verbose      = FALSE,
+      n_threads    = 1L
+    )
+  } else if (method == "umap") {
     cfg <- umap::umap.defaults
     cfg$n_components <- as.integer(n_components)
     cfg$n_neighbors  <- as.integer(n_neighbors)
