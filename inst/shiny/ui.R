@@ -76,7 +76,15 @@ shinydashboard::dashboardPage(
       shiny::actionButton("btn_load_cohort", "Load Cohort",
                           icon  = shiny::icon("play"),
                           class = "btn-primary btn-block"),
-      shiny::uiOutput("load_status")
+      shiny::uiOutput("load_status"),
+      shiny::hr(),
+      shiny::tags$a(
+        href   = "manual.html",
+        target = "_blank",
+        class  = "btn btn-default btn-sm btn-block",
+        style  = "color: #b8c7ce;",
+        shiny::icon("circle-question"), " User Manual"
+      )
     )
   ),
 
