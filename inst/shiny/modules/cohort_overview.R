@@ -249,12 +249,12 @@ cohort_overviewServer <- function(id,
     })
 
     # ── 4. Click → patient selection ────────────────────────────────────────
-    shiny::observeEvent(plotly::event_data("plotly_click", source = "quilt"), {
-      click <- plotly::event_data("plotly_click", source = "quilt")
-      if (!is.null(click) && !is.null(click$customdata)) {
-        pid <- suppressWarnings(as.integer(click$customdata))
-        if (!is.na(pid)) selected_patient(pid)
-      }
+    shiny::observe({
+      click <- plotly::event_data("plotly_click", source = "quilt",
+                                   session = session)
+      shiny::req(!is.null(click), !is.null(click$customdata))
+      pid <- suppressWarnings(as.integer(click$customdata))
+      if (!is.na(pid)) selected_patient(pid)
     })
 
     # ── 5. Selection info bar ────────────────────────────────────────────────

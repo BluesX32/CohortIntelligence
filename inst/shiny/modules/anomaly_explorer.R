@@ -63,16 +63,15 @@ anomaly_explorerServer <- function(id, ml_results, selected_patient) {
         plotly::event_register("plotly_click")
     })
 
-    shiny::observeEvent(plotly::event_data("plotly_click", source = "umap"), {
-      click <- plotly::event_data("plotly_click", source = "umap")
-      if (!is.null(click)) {
-        ml  <- ml_results()
-        df  <- ml$merged
-        pid <- df$subject_id[which.min(
-          (df$umap_1 - click$x)^2 + (df$umap_2 - click$y)^2
-        )]
-        if (length(pid) > 0L) selected_patient(pid[[1L]])
-      }
+    shiny::observe({
+      click <- plotly::event_data("plotly_click", source = "umap",
+                                   session = session)
+      shiny::req(!is.null(click), ml_results())
+      df  <- ml_results()$merged
+      pid <- df$subject_id[which.min(
+        (df$umap_1 - click$x)^2 + (df$umap_2 - click$y)^2
+      )]
+      if (length(pid) > 0L) selected_patient(pid[[1L]])
     })
 
     output$anomaly_hist <- plotly::renderPlotly({
