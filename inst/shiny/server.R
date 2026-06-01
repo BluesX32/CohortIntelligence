@@ -55,13 +55,18 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
                                cohort_table         = cohort_table)
       },
       error = function(e) {
-        shiny::showNotification(paste("Error:", conditionMessage(e)),
-                                type = "error")
+        msg <- conditionMessage(e)
+        message("[CohortIntelligence] Cohort extract error: ", msg)
+        shiny::showNotification(paste("Cohort error:", msg),
+                                type = "error", duration = NULL)
         NULL
       }
     )
     if (is.null(cohort_members) || nrow(cohort_members) == 0L) {
-      shiny::showNotification("No cohort members found.", type = "warning")
+      message("[CohortIntelligence] No cohort members found.")
+      shiny::showNotification(
+        "No cohort members found. Run check_cohort_json() in the R console to diagnose.",
+        type = "warning", duration = NULL)
       return()
     }
 
@@ -70,8 +75,10 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
       extract_omop_domains(connector,
                            subject_ids = cohort_members$subject_id),
       error = function(e) {
-        shiny::showNotification(
-          paste("Domain extract error:", conditionMessage(e)), type = "error")
+        msg <- conditionMessage(e)
+        message("[CohortIntelligence] Domain extract error: ", msg)
+        shiny::showNotification(paste("Domain error:", msg),
+                                type = "error", duration = NULL)
         NULL
       }
     )
@@ -262,20 +269,44 @@ function(input, output, session) {
     }
   })
 
-  # Auto-load when a live connection is passed via launch_cohort_intelligence()
-  shiny::observe({
+  # Auto-load when a live connection is passed via launch_cohort_intelligence().
+  # session$onFlushed(once = TRUE) fires after the FIRST complete reactive flush,
+  # which is the earliest point at which the browser is connected and
+  # withProgress() / showNotification() work reliably.
+  session$onFlushed(function() {
     env <- CohortIntelligence:::.cohort_intel_env
-    if (!is.null(env$connection) && is.null(rv$quilt_base())) {
-      connector <- .build_connector(input)
-      if (!is.null(connector)) .run_pipeline(connector, env, rv)
+    if (!is.null(env$connection) &&
+        is.null(shiny::isolate(rv$quilt_base()))) {
+      connector <- shiny::isolate(.build_connector(input))
+      if (!is.null(connector)) {
+        tryCatch(
+          .run_pipeline(connector, env, rv),
+          error = function(e) {
+            msg <- conditionMessage(e)
+            message("[CohortIntelligence] Auto-load error: ", msg)
+            shiny::showNotification(paste("Load error:", msg), type = "error",
+                                    duration = NULL)
+          }
+        )
+      }
     }
-  }) |> shiny::bindEvent(session$clientData$url_pathname, once = TRUE)
+  }, once = TRUE)
 
   # Manual load button (demo mode and upload mode)
   shiny::observeEvent(input$btn_load_cohort, {
     env       <- CohortIntelligence:::.cohort_intel_env
     connector <- .build_connector(input)
-    if (!is.null(connector)) .run_pipeline(connector, env, rv)
+    if (!is.null(connector)) {
+      tryCatch(
+        .run_pipeline(connector, env, rv),
+        error = function(e) {
+          msg <- conditionMessage(e)
+          message("[CohortIntelligence] Load error: ", msg)
+          shiny::showNotification(paste("Load error:", msg), type = "error",
+                                  duration = NULL)
+        }
+      )
+    }
   })
 
   cohort_overviewServer(
