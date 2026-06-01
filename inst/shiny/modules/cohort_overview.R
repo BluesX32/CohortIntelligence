@@ -21,7 +21,8 @@
   procedure   = list(c(0, "#FFFFFF"), c(0.5, "#A6D96A"), c(1, "#1A9641")),
   measurement = list(c(0, "#FFFFFF"), c(0.5, "#CAB2D6"), c(1, "#6A3D9A")),
   observation = list(c(0, "#FFFFFF"), c(0.5, "#FDB863"), c(1, "#B35806")),
-  visit       = list(c(0, "#FFFFFF"), c(0.5, "#C7E9B4"), c(1, "#41B6C4"))
+  visit       = list(c(0, "#FFFFFF"), c(0.5, "#C7E9B4"), c(1, "#41B6C4")),
+  death       = list(c(0, "#FFFFFF"), c(0.5, "#888888"), c(1, "#111111"))
 )
 
 .DOMAIN_HIGH_COLORS <- c(
@@ -63,8 +64,10 @@ cohort_overviewUI <- function(id) {
         shinyWidgets::checkboxGroupButtons(
           ns("filter_domains"),
           label     = "Domains",
-          choices   = c("condition","drug","procedure","measurement","observation","visit"),
-          selected  = c("condition","drug","procedure","measurement","observation","visit"),
+          choices   = c("condition","drug","procedure","measurement",
+                         "observation","visit","death"),
+          selected  = c("condition","drug","procedure","measurement",
+                         "observation","visit","death"),
           justified = TRUE,
           size      = "xs",
           direction = "horizontal"
@@ -348,11 +351,7 @@ cohort_overviewServer <- function(id,
   domains     <- unique(quilt_df$domain)
   n_domains   <- length(domains)
   if (n_domains == 0L) {
-    return(plotly::plot_ly() |>
-      plotly::add_annotations(
-        text      = "No data. Adjust filters.",
-        showarrow = FALSE, x = 0.5, y = 0.5, xref = "paper", yref = "paper"
-      ))
+    return(empty_plotly("No data. Adjust filters."))
   }
 
   # Build one heatmap per domain

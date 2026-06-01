@@ -173,7 +173,8 @@ build_feature_matrix <- function(cohort_members,
                                   domain_data,
                                   time_windows      = define_time_windows(),
                                   domains           = c("condition","drug","procedure",
-                                                        "measurement","observation","visit"),
+                                                        "measurement","observation",
+                                                        "visit","death"),
                                   value_mode        = c("count","binary","log1p_count"),
                                   min_concept_freq  = 10L) {
   value_mode <- match.arg(value_mode)
@@ -184,7 +185,8 @@ build_feature_matrix <- function(cohort_members,
     procedure   = "procedure_concept_id",
     measurement = "measurement_concept_id",
     observation = "observation_concept_id",
-    visit       = "visit_concept_id"
+    visit       = "visit_concept_id",
+    death       = "death_type_concept_id"
   )
   domain_name_col <- c(
     condition   = "condition_name",
@@ -192,7 +194,8 @@ build_feature_matrix <- function(cohort_members,
     procedure   = "procedure_name",
     measurement = "measurement_name",
     observation = "observation_name",
-    visit       = "visit_type"
+    visit       = "visit_type",
+    death       = "cause_name"
   )
   domain_date_col <- c(
     condition   = "condition_start_date",
@@ -200,7 +203,8 @@ build_feature_matrix <- function(cohort_members,
     procedure   = "procedure_date",
     measurement = "measurement_date",
     observation = "observation_date",
-    visit       = "visit_start_date"
+    visit       = "visit_start_date",
+    death       = "death_date"
   )
 
   active_domains <- intersect(domains, names(domain_data))
@@ -388,6 +392,147 @@ build_quilt_data <- function(domain_activity,
     event_count, fill_value,
     cluster_id, priority_tier, rank_position
   )
+}
+
+# ---------------------------------------------------------------------------
+# Cohort summary statistics
+# ---------------------------------------------------------------------------
+
+#' Compute cohort-level summary statistics for the demographics tab
+#'
+#' @param cohort_members tibble(subject_id, cohort_start_date, cohort_end_date).
+#' @param person_data tibble from [extract_person_demographics()]. May be a
+#'   zero-row tibble if demographics were not extracted.
+#'
+#' @return Named list with `$n_patients`, `$median_followup`, `$median_age`,
+#'   `$pct_death`, `$age_df`, `$sex_df`, `$race_df`.
+#' @export
+build_cohort_summary <- function(cohort_members, person_data = NULL) {
+  n  <- nrow(cohort_members)
+  pd <- if (!is.null(person_data) && nrow(person_data) > 0L) {
+    tibble::as_tibble(person_data)
+  } else {
+    tibble::tibble(
+      person_id        = integer(0),
+      birth_year       = integer(0),
+      gender_name      = character(0),
+      race_name        = character(0),
+      ethnicity_name   = character(0)
+    )
+  }
+
+  # Median follow-up
+  has_end  <- "cohort_end_date" %in% names(cohort_members)
+  med_fu   <- if (has_end && any(!is.na(cohort_members$cohort_end_date))) {
+    median(as.integer(cohort_members$cohort_end_date -
+                        cohort_members$cohort_start_date), na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+
+  # Age at index
+  age_df <- tibble::tibble()
+  med_age <- NA_real_
+  if (nrow(pd) > 0L && "birth_year" %in% names(pd) &&
+      !all(is.na(pd$birth_year))) {
+    age_df <- dplyr::left_join(
+      dplyr::select(cohort_members, subject_id, cohort_start_date),
+      dplyr::rename(pd, subject_id = person_id),
+      by = "subject_id"
+    ) |>
+      dplyr::mutate(
+        age_at_index = as.integer(
+          lubridate::year(cohort_start_date) - birth_year
+        )
+      ) |>
+      dplyr::filter(!is.na(age_at_index)) |>
+      dplyr::select(subject_id, age_at_index)
+    med_age <- median(age_df$age_at_index, na.rm = TRUE)
+  }
+
+  # Sex distribution
+  sex_df <- if (nrow(pd) > 0L && "gender_name" %in% names(pd)) {
+    pd |>
+      dplyr::count(gender_name = dplyr::coalesce(gender_name, "Unknown"),
+                   name = "n") |>
+      dplyr::arrange(dplyr::desc(n))
+  } else {
+    tibble::tibble(gender_name = character(0), n = integer(0))
+  }
+
+  # Race distribution (top 8 + Other)
+  race_df <- if (nrow(pd) > 0L && "race_name" %in% names(pd)) {
+    top8 <- pd |>
+      dplyr::count(race_name = dplyr::coalesce(race_name, "Unknown"),
+                   name = "n") |>
+      dplyr::arrange(dplyr::desc(n))
+    if (nrow(top8) > 8L) {
+      other_n <- sum(top8$n[-(1:8)])
+      top8 <- dplyr::bind_rows(top8[1:8, ],
+                                tibble::tibble(race_name = "Other",
+                                               n = other_n))
+    }
+    top8
+  } else {
+    tibble::tibble(race_name = character(0), n = integer(0))
+  }
+
+  # % death (rough: based on presence in death domain, but we check person_data here)
+  pct_death <- NA_real_
+
+  list(
+    n_patients      = n,
+    median_followup = med_fu,
+    median_age      = med_age,
+    pct_death       = pct_death,
+    age_df          = age_df,
+    sex_df          = sex_df,
+    race_df         = race_df
+  )
+}
+
+#' Build a data density tibble for the calendar heatmap
+#'
+#' Counts the number of distinct patients with at least one event per domain
+#' per calendar month. Used by the Demographics tab data density heatmap.
+#'
+#' @param domain_data Named list from [extract_omop_domains()].
+#' @param cohort_members tibble(subject_id, cohort_start_date).
+#'
+#' @return tibble(domain, calendar_month, n_patients) where
+#'   `calendar_month` is a Date truncated to the first of the month.
+#' @export
+build_data_density <- function(domain_data, cohort_members) {
+  domain_date_col <- c(
+    condition   = "condition_start_date",
+    drug        = "drug_exposure_start_date",
+    procedure   = "procedure_date",
+    measurement = "measurement_date",
+    observation = "observation_date",
+    visit       = "visit_start_date",
+    death       = "death_date"
+  )
+
+  active_domains <- intersect(names(domain_data), names(domain_date_col))
+
+  purrr::map_dfr(active_domains, function(d) {
+    df       <- domain_data[[d]]
+    date_col <- domain_date_col[[d]]
+    if (nrow(df) == 0L || !date_col %in% names(df)) return(tibble::tibble())
+
+    df |>
+      dplyr::rename(subject_id = person_id) |>
+      dplyr::filter(subject_id %in% cohort_members$subject_id,
+                    !is.na(.data[[date_col]])) |>
+      dplyr::mutate(
+        calendar_month = lubridate::floor_date(.data[[date_col]], "month")
+      ) |>
+      dplyr::group_by(calendar_month) |>
+      dplyr::summarise(n_patients = dplyr::n_distinct(subject_id),
+                       .groups = "drop") |>
+      dplyr::mutate(domain = d)
+  }) |>
+    dplyr::select(domain, calendar_month, n_patients)
 }
 
 #' Re-order patient rows in a quilt tibble (internal)

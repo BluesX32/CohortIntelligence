@@ -1,7 +1,7 @@
 #' @keywords internal
 "_PACKAGE"
 
-#' @importFrom stats predict reorder setNames
+#' @importFrom stats predict reorder setNames median
 #' @importFrom rlang .data
 NULL
 
@@ -20,7 +20,10 @@ utils::globalVariables(c(
   "hypothesis_id", "cluster_a", "cluster_b", "effect_size",
   "p_value_raw", "p_value_adjusted", "direction", "description_text",
   "n", "value_as_number", "birth_year",
-  "gender_concept_id", "race_concept_id", "ethnicity_concept_id"
+  "gender_concept_id", "race_concept_id", "ethnicity_concept_id",
+  "gender_name", "race_name", "ethnicity_name",
+  "age_at_index", "calendar_month", "n_patients",
+  "median_followup", "median_age", "pct_death"
 ))
 
 `%||%` <- function(x, y) if (!is.null(x)) x else y

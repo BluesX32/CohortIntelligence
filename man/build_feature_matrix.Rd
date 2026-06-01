@@ -8,7 +8,8 @@ build_feature_matrix(
   cohort_members,
   domain_data,
   time_windows = define_time_windows(),
-  domains = c("condition", "drug", "procedure", "measurement", "observation", "visit"),
+  domains = c("condition", "drug", "procedure", "measurement", "observation", "visit",
+    "death"),
   value_mode = c("count", "binary", "log1p_count"),
   min_concept_freq = 10L
 )

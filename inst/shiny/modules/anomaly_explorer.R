@@ -35,7 +35,9 @@ anomaly_explorerServer <- function(id, ml_results, selected_patient) {
       shiny::req(ml_results())
       ml  <- ml_results()
       df  <- ml$merged
-      if (is.null(df) || nrow(df) == 0L) return(plotly::plot_ly())
+      if (is.null(df) || nrow(df) == 0L) {
+        return(empty_plotly("No ML results yet."))
+      }
 
       df$selected <- df$subject_id == (selected_patient() %||% -1L)
       df$marker_size <- ifelse(df$selected, 14, 7)
@@ -77,7 +79,7 @@ anomaly_explorerServer <- function(id, ml_results, selected_patient) {
     output$anomaly_hist <- plotly::renderPlotly({
       shiny::req(ml_results())
       df <- ml_results()$anomaly
-      if (is.null(df)) return(plotly::plot_ly())
+      if (is.null(df)) return(empty_plotly("No anomaly scores yet."))
       plotly::plot_ly(x = ~df$anomaly_score, type = "histogram",
                       marker = list(color = "#2c7bb6")) |>
         plotly::layout(xaxis = list(title = "Anomaly Score"),

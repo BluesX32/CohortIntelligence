@@ -41,7 +41,9 @@ shinydashboard::dashboardPage(
       shinydashboard::menuItem("Trajectory Viewer", tabName = "trajectory",
                                icon = shiny::icon("chart-line")),
       shinydashboard::menuItem("Hypothesis Panel",  tabName = "hypotheses",
-                               icon = shiny::icon("lightbulb"))
+                               icon = shiny::icon("lightbulb")),
+      shinydashboard::menuItem("Demographics",      tabName = "demographics",
+                               icon = shiny::icon("users"))
     ),
     shiny::hr(),
     shiny::div(
@@ -105,6 +107,11 @@ shinydashboard::dashboardPage(
         tabName = "hypotheses",
         shiny::h3("Hypothesis Generation"),
         hypothesis_panelUI("hypotheses")
+      ),
+      shinydashboard::tabItem(
+        tabName = "demographics",
+        shiny::h3("Cohort Demographics & Data Density"),
+        demographicsUI("demographics")
       )
     )
   )

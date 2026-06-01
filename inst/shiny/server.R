@@ -70,6 +70,13 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
       return()
     }
 
+    shiny::setProgress(0.18, detail = "Extracting demographics...")
+    person_data <- tryCatch(
+      extract_person_demographics(connector,
+                                   subject_ids = cohort_members$subject_id),
+      error = function(e) NULL
+    )
+
     shiny::setProgress(0.25, detail = "Extracting OMOP domains...")
     domain_data <- tryCatch(
       extract_omop_domains(connector,
@@ -119,6 +126,7 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
     quilt_base <- build_quilt_data(domain_act, rank_df)
 
     rv$cohort_members(cohort_members)
+    rv$person_data(person_data)
     rv$domain_data(domain_data)
     rv$feature_matrix(feat_mat)
     rv$ml_results(ml_res)
@@ -226,16 +234,43 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
     )
   })
 
+  genders <- c("MALE" = 8507L, "FEMALE" = 8532L)
+  races   <- c("White" = 8527L, "Black or African American" = 8516L,
+                "Asian" = 8515L, "Unknown" = 0L)
+  person_df <- tibble::tibble(
+    person_id            = seq_len(n),
+    birth_year           = sample(1940L:2000L, n, replace = TRUE),
+    gender_concept_id    = sample(genders, n, replace = TRUE),
+    gender_name          = names(genders)[match(
+                             sample(genders, n, replace = TRUE), genders)],
+    race_concept_id      = sample(races, n, replace = TRUE,
+                                   prob = c(0.6, 0.2, 0.1, 0.1)),
+    race_name            = names(races)[match(
+                             sample(races, n, replace = TRUE,
+                                    prob = c(0.6, 0.2, 0.1, 0.1)), races)],
+    ethnicity_concept_id = 0L,
+    ethnicity_name       = "Unknown"
+  )
+
   create_cohort_df_connector(list(
     cohort      = cohort_members,
-    person      = .empty_cohort_domain("person"),
+    person      = person_df,
     condition   = cond_df,
     drug        = drug_df,
     procedure   = proc_df,
     measurement = meas_df,
     observation = .empty_cohort_domain("observation"),
     visit       = visit_df,
-    death       = .empty_cohort_domain("death")
+    death       = tibble::tibble(
+      person_id             = sample(seq_len(n), max(1L, as.integer(n * 0.08)),
+                                     replace = FALSE),
+      death_date            = as.Date("2018-01-01") +
+                                sample(0:730, max(1L, as.integer(n * 0.08)),
+                                       replace = TRUE),
+      death_type_concept_id = 32817L,
+      cause_concept_id      = 4306655L,
+      cause_name            = "Death"
+    )
   ))
 }
 
@@ -250,6 +285,7 @@ function(input, output, session) {
     quilt_base       = shiny::reactiveVal(NULL),
     domain_data      = shiny::reactiveVal(NULL),
     cohort_members   = shiny::reactiveVal(NULL),
+    person_data      = shiny::reactiveVal(NULL),
     feature_matrix   = shiny::reactiveVal(NULL),
     ml_results       = shiny::reactiveVal(NULL),
     rank_df          = shiny::reactiveVal(NULL)
@@ -340,6 +376,13 @@ function(input, output, session) {
     selected_patient = rv$selected_patient,
     domain_data      = shiny::reactive(rv$domain_data()),
     cohort_members   = shiny::reactive(rv$cohort_members())
+  )
+
+  demographicsServer(
+    "demographics",
+    cohort_members = shiny::reactive(rv$cohort_members()),
+    domain_data    = shiny::reactive(rv$domain_data()),
+    person_data    = shiny::reactive(rv$person_data())
   )
 
   hypothesis_panelServer(
