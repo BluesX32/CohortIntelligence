@@ -1,11 +1,14 @@
 # cohort.R
 # Cohort instantiation from ATLAS JSON (CirceR format).
-# Requires CirceR, SqlRender, and DatabaseConnector.
 #
-# Strategy: CirceR with generateStats = FALSE produces exactly one
-# INSERT INTO <target> SELECT <cohort logic> per cohort definition.
-# We extract just the SELECT part and execute it as a plain query,
-# so the CDM never needs to be writable.
+# CirceR with generateStats = FALSE generates two sections:
+#   SETUP  -- creates #Codesets (temp table of expanded concept IDs)
+#   COHORT -- DELETE FROM target + INSERT INTO target SELECT ...
+#
+# Strategy:
+#   1. Execute the SETUP section (creates #Codesets; only needs temp-space access)
+#   2. Extract the SELECT from the INSERT and run it as a plain query
+#   → No writes to CDM schema, no create-table, no permissions beyond SELECT
 
 # ---------------------------------------------------------------------------
 # Internal: safe DBMS detection
@@ -31,15 +34,20 @@
 
 #' Instantiate a cohort from an ATLAS JSON file and return cohort members
 #'
-#' Reads an ATLAS cohort definition JSON, generates the cohort SQL via
-#' `CirceR`, and runs it as a **read-only SELECT** against the CDM. No write
-#' permissions, temp tables, or pre-existing cohort schema are required.
+#' Reads an ATLAS cohort definition JSON, generates SQL via `CirceR`, then:
+#'
+#' 1. Executes the **setup section** (creates the `#Codesets` temp table that
+#'    expands concept IDs using `concept_ancestor`). This only requires access
+#'    to temp space -- no write permission to the CDM schema is needed.
+#' 2. Extracts the **SELECT** from the final `INSERT INTO ... SELECT` and runs
+#'    it as a plain read-only query.
+#'
+#' No permanent table is created in the CDM schema.
 #'
 #' @param connector A `cohort_omop_connector` from [create_cohort_connector()].
 #' @param json_path Path to an ATLAS cohort definition JSON file.
-#' @param cohort_id Integer. Cohort definition ID (matched in the SELECT
-#'   output). Default `1L`.
-#' @param verbose Logical. Print the generated SQL for debugging. Default
+#' @param cohort_id Integer. Cohort definition ID. Default `1L`.
+#' @param verbose Logical. Print both SQL sections for debugging. Default
 #'   `FALSE`.
 #'
 #' @return tibble(subject_id, cohort_start_date, cohort_end_date)
@@ -62,71 +70,110 @@ fetch_cohort_from_json <- function(connector,
 
   json_str   <- paste(readLines(json_path, warn = FALSE), collapse = "\n")
   expression <- CirceR::cohortExpressionFromJson(json_str)
-  options    <- CirceR::createGenerateOptions(generateStats = FALSE)
-  cohort_sql <- CirceR::buildCohortQuery(expression, options = options)
+  opts       <- CirceR::createGenerateOptions(generateStats = FALSE)
+  cohort_sql <- CirceR::buildCohortQuery(expression, options = opts)
 
   with_cohort_connector(connector, function(active) {
     dbms <- .get_dbms(active)
 
-    # ── Step 1: render with sentinel markers so we can extract the SELECT ──
-    # Using unique strings that will never appear in real SQL.
-    SENTINEL_SCHEMA <- "CI_MARKER_SCHEMA_7x9"
-    SENTINEL_TABLE  <- "CI_MARKER_TABLE_7x9"
+    # ------------------------------------------------------------------
+    # Sentinel markers: unique strings that will not appear in real SQL
+    # ------------------------------------------------------------------
+    S_SCHEMA <- "CI_MARKER_SCHEMA_7x9"
+    S_TABLE  <- "CI_MARKER_TABLE_7x9"
 
-    sql_rendered <- SqlRender::render(
+    # Render the full CirceR SQL with sentinel markers for the target table
+    sql_full <- SqlRender::render(
       cohort_sql,
       cdm_database_schema        = active$cdm_schema,
       vocabulary_database_schema = active$vocab_schema,
-      target_database_schema     = SENTINEL_SCHEMA,
-      target_cohort_table        = SENTINEL_TABLE,
+      target_database_schema     = S_SCHEMA,
+      target_cohort_table        = S_TABLE,
       target_cohort_id           = as.integer(cohort_id),
       results_database_schema    = active$cdm_schema
     )
 
     if (verbose) {
-      message("--- Rendered CirceR SQL (before SELECT extraction) ---")
-      message(sql_rendered)
-      message("--- End ---")
+      message("\n=== Full rendered CirceR SQL ===\n", sql_full, "\n===\n")
     }
 
-    # ── Step 2: extract the SELECT from INSERT INTO sentinel (...) SELECT ──
-    # CirceR with generateStats=FALSE produces one INSERT per definition.
-    # Pattern: INSERT INTO SCHEMA.TABLE (col1, col2, col3, col4)\nSELECT ...
+    # ------------------------------------------------------------------
+    # Split: everything BEFORE the DELETE FROM sentinel is setup SQL.
+    # The setup section creates #Codesets (concept expansion).
+    # Only temp-space write access is needed there.
+    # ------------------------------------------------------------------
+    delete_pattern <- paste0(
+      "DELETE\\s+FROM\\s+", S_SCHEMA, "\\.", S_TABLE
+    )
+    delete_pos <- regexpr(delete_pattern, sql_full, perl = TRUE,
+                          ignore.case = TRUE)
+
+    setup_sql <- if (delete_pos > 1L) {
+      trimws(substring(sql_full, 1L, delete_pos - 1L))
+    } else {
+      ""
+    }
+
+    # ------------------------------------------------------------------
+    # Extract the SELECT from INSERT INTO sentinel (...) SELECT ...
+    # ------------------------------------------------------------------
     insert_pattern <- paste0(
-      "INSERT\\s+INTO\\s+",
-      SENTINEL_SCHEMA, "\\.", SENTINEL_TABLE,
+      "INSERT\\s+INTO\\s+", S_SCHEMA, "\\.", S_TABLE,
       "\\s*\\([^)]+\\)\\s*"
     )
-    m <- regexpr(insert_pattern, sql_rendered,
-                 ignore.case = TRUE, perl = TRUE)
+    m <- regexpr(insert_pattern, sql_full, ignore.case = TRUE, perl = TRUE)
 
     if (m == -1L) {
       rlang::abort(paste0(
-        "Could not locate INSERT statement in CirceR-generated SQL.\n",
-        "Re-run with verbose = TRUE to inspect the SQL."
+        "Could not find INSERT statement in CirceR SQL for: ", basename(json_path),
+        "\nRe-run with verbose = TRUE to inspect the generated SQL."
       ))
     }
 
-    select_sql <- substring(sql_rendered, m + attr(m, "match.length"))
-    # Trim everything after the last semicolon that closes this statement
-    select_sql <- trimws(gsub(";[\\s\\S]*$", "", select_sql, perl = TRUE))
+    # Everything after the INSERT INTO ... (cols) header
+    select_sql <- substring(sql_full, m + attr(m, "match.length"))
+    # Drop from the first semicolon that terminates this SELECT statement.
+    # Use a lookahead so we don't drop semicolons inside string literals.
+    select_sql <- trimws(gsub(";.*$", "", select_sql))
 
-    # ── Step 3: translate for target DBMS ────────────────────────────────────
-    select_sql <- SqlRender::translate(select_sql, targetDialect = dbms)
-
-    if (verbose) {
-      message("--- Final SELECT SQL (translated to ", dbms, ") ---")
-      message(select_sql)
-      message("--- End ---")
+    # ------------------------------------------------------------------
+    # Translate both sections for the target DBMS
+    # ------------------------------------------------------------------
+    if (nzchar(setup_sql)) {
+      setup_translated <- SqlRender::translate(setup_sql, targetDialect = dbms)
+      if (verbose) {
+        message("\n=== Setup SQL (translated for ", dbms, ") ===\n",
+                setup_translated, "\n===\n")
+      }
+      tryCatch(
+        DatabaseConnector::executeSql(
+          active$conn, setup_translated,
+          progressBar = FALSE, reportOverallTime = FALSE
+        ),
+        error = function(e) {
+          rlang::abort(paste0(
+            "Codesets setup failed (createing #Codesets temp table).\n",
+            "DBMS: ", dbms, "\n",
+            "Vocab schema: ", active$vocab_schema, "\n",
+            "Hint: re-run with verbose = TRUE.\n",
+            "Error: ", conditionMessage(e)
+          ))
+        }
+      )
     }
 
-    # ── Step 4: execute as a plain SELECT ────────────────────────────────────
+    select_translated <- SqlRender::translate(select_sql, targetDialect = dbms)
+    if (verbose) {
+      message("\n=== Cohort SELECT SQL (translated for ", dbms, ") ===\n",
+              select_translated, "\n===\n")
+    }
+
     df <- tryCatch(
       {
         if (inherits(active$conn, "JDBCConnection")) {
-          as.data.frame(DBI::dbGetQuery(active$conn, select_sql))
+          as.data.frame(DBI::dbGetQuery(active$conn, select_translated))
         } else {
-          DatabaseConnector::querySql(active$conn, select_sql,
+          DatabaseConnector::querySql(active$conn, select_translated,
                                       snakeCaseToCamelCase = FALSE)
         }
       },
@@ -134,10 +181,8 @@ fetch_cohort_from_json <- function(connector,
         rlang::abort(paste0(
           "Cohort SELECT failed.\n",
           "DBMS: ", dbms, "\n",
-          "CDM schema: ", active$cdm_schema, "\n",
-          "Vocab schema: ", active$vocab_schema, "\n",
-          "Hint: run fetch_cohort_from_json(..., verbose = TRUE) to inspect SQL.\n",
-          "Original error: ", conditionMessage(e)
+          "Hint: re-run with verbose = TRUE to inspect the SELECT.\n",
+          "Error: ", conditionMessage(e)
         ))
       }
     )
@@ -147,7 +192,7 @@ fetch_cohort_from_json <- function(connector,
       if (col %in% names(df)) df[[col]] <- as.Date(df[[col]])
     }
 
-    # subject_id is person_id in the CirceR SELECT output
+    # CirceR's SELECT aliases person_id as subject_id; handle both column names
     if (!"subject_id" %in% names(df) && "person_id" %in% names(df)) {
       df$subject_id <- df$person_id
     }
@@ -163,27 +208,29 @@ fetch_cohort_from_json <- function(connector,
 # check_cohort_json
 # ---------------------------------------------------------------------------
 
-#' Diagnose a cohort JSON file against the CDM
+#' Diagnose a cohort JSON against the CDM without modifying any tables
 #'
-#' Runs three checks without modifying the database:
-#' 1. Verifies the JSON parses and the SQL can be extracted.
-#' 2. Reports which concept IDs are present in the CDM vocabulary.
-#' 3. Counts patients with at least one qualifying condition (pre-filter count).
+#' Runs three read-only checks:
+#' 1. JSON parses and SQL can be generated.
+#' 2. Concept IDs exist in the CDM vocabulary.
+#' 3. Count of patients with at least one qualifying condition code (pre-rules).
 #'
-#' Call this before [fetch_cohort_from_json()] to determine whether an empty
-#' cohort result is a SQL/permission error or a genuinely empty population.
+#' If `candidate_count > 0` but [fetch_cohort_from_json()] returns 0, the
+#' inclusion rules (age, prior observation, etc.) are filtering all patients.
+#' Re-run `fetch_cohort_from_json(..., verbose = TRUE)` to inspect the SQL.
 #'
 #' @param connector A `cohort_omop_connector` from [create_cohort_connector()].
 #' @param json_path Path to an ATLAS cohort definition JSON file.
-#' @param show_sql Logical. Print the generated SELECT SQL. Default `FALSE`.
+#' @param show_sql Logical. Print the raw CirceR SQL. Default `FALSE`.
 #'
-#' @return Invisibly, a named list with `$concept_check` and `$candidate_count`.
+#' @return Invisibly, a named list with `$concept_check` and
+#'   `$candidate_count`.
 #' @export
 check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
   for (pkg in c("CirceR", "SqlRender")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       rlang::abort(sprintf(
-        "Package '%s' is required. Install: remotes::install_github('OHDSI/%s')",
+        "Package '%s' required. Install: remotes::install_github('OHDSI/%s')",
         pkg, pkg
       ))
     }
@@ -198,14 +245,14 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
     error = function(e) rlang::abort(paste("JSON parse failed:", conditionMessage(e)))
   )
   concept_ids <- .extract_concept_ids(json_str)
-  message(sprintf("JSON OK. Concept IDs found: %s",
+  message(sprintf("JSON OK. Concept IDs: %s",
                   if (length(concept_ids)) paste(concept_ids, collapse = ", ")
                   else "(none extracted)"))
 
   if (show_sql) {
-    options    <- CirceR::createGenerateOptions(generateStats = FALSE)
-    cohort_sql <- CirceR::buildCohortQuery(expression, options = options)
-    message("--- Raw CirceR SQL ---\n", cohort_sql, "\n---")
+    opts <- CirceR::createGenerateOptions(generateStats = FALSE)
+    message("--- Raw CirceR SQL ---\n",
+            CirceR::buildCohortQuery(expression, options = opts), "\n---")
   }
 
   with_cohort_connector(connector, function(active) {
@@ -247,14 +294,16 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
 
     # 2. Candidate count (patients with >=1 qualifying condition, pre-rules)
     candidate_count <- NA_integer_
-    if (length(concept_ids) > 0L) {
+    cond_ids <- concept_ids[concept_ids %in%
+      (concept_check$concept_id[concept_check$domain_id == "Condition"])]
+    if (length(cond_ids) > 0L) {
       count_sql <- SqlRender::translate(
         SqlRender::render(
           "SELECT COUNT(DISTINCT person_id) AS n
            FROM @cdm_schema.condition_occurrence
            WHERE condition_concept_id IN (@concept_ids);",
           cdm_schema  = active$cdm_schema,
-          concept_ids = concept_ids
+          concept_ids = cond_ids
         ),
         targetDialect = dbms
       )
@@ -274,23 +323,17 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
           NA_integer_
         }
       )
-      msg <- if (is.na(candidate_count)) {
-        "Candidate count query failed."
+      if (is.na(candidate_count)) {
+        message("Candidate count query failed -- check CDM schema and permissions.")
       } else if (candidate_count == 0L) {
-        "0 patients with matching concept IDs -- cohort will be empty."
+        message("0 patients with matching concept IDs -- cohort will be empty.")
       } else {
-        sprintf(
-          "%d patients with >=1 qualifying condition (before age/obs/inclusion rules).",
+        message(sprintf(
+          "%d patients with >= 1 qualifying condition (before inclusion rules).",
           candidate_count
-        )
+        ))
+        message("If fetch_cohort_from_json() returns 0, run it with verbose = TRUE.")
       }
-      message(msg)
-    }
-
-    if (!is.na(candidate_count) && candidate_count > 0L) {
-      message("If fetch_cohort_from_json() still returns 0, inclusion rules")
-      message("(age >= 18, prior observation window, etc.) are filtering all patients.")
-      message("Re-run fetch_cohort_from_json(..., verbose = TRUE) to inspect the SELECT.")
     }
 
     invisible(list(concept_check   = concept_check,
@@ -323,7 +366,7 @@ list_cohort_templates <- function() {
   tryCatch(
     {
       if (!requireNamespace("jsonlite", quietly = TRUE)) return(integer(0))
-      parsed      <- jsonlite::fromJSON(json_str, simplifyVector = FALSE)
+      parsed       <- jsonlite::fromJSON(json_str, simplifyVector = FALSE)
       concept_sets <- parsed$ConceptSets
       if (is.null(concept_sets)) return(integer(0))
       ids <- unlist(lapply(concept_sets, function(cs) {

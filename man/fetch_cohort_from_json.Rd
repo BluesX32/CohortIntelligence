@@ -11,17 +11,25 @@ fetch_cohort_from_json(connector, json_path, cohort_id = 1L, verbose = FALSE)
 
 \item{json_path}{Path to an ATLAS cohort definition JSON file.}
 
-\item{cohort_id}{Integer. Cohort definition ID (matched in the SELECT
-output). Default \code{1L}.}
+\item{cohort_id}{Integer. Cohort definition ID. Default \code{1L}.}
 
-\item{verbose}{Logical. Print the generated SQL for debugging. Default
+\item{verbose}{Logical. Print both SQL sections for debugging. Default
 \code{FALSE}.}
 }
 \value{
 tibble(subject_id, cohort_start_date, cohort_end_date)
 }
 \description{
-Reads an ATLAS cohort definition JSON, generates the cohort SQL via
-\code{CirceR}, and runs it as a \strong{read-only SELECT} against the CDM. No write
-permissions, temp tables, or pre-existing cohort schema are required.
+Reads an ATLAS cohort definition JSON, generates SQL via \code{CirceR}, then:
+}
+\details{
+\enumerate{
+\item Executes the \strong{setup section} (creates the \verb{#Codesets} temp table that
+expands concept IDs using \code{concept_ancestor}). This only requires access
+to temp space -- no write permission to the CDM schema is needed.
+\item Extracts the \strong{SELECT} from the final \verb{INSERT INTO ... SELECT} and runs
+it as a plain read-only query.
+}
+
+No permanent table is created in the CDM schema.
 }

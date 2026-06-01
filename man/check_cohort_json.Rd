@@ -2,7 +2,7 @@
 % Please edit documentation in R/cohort.R
 \name{check_cohort_json}
 \alias{check_cohort_json}
-\title{Diagnose a cohort JSON file against the CDM}
+\title{Diagnose a cohort JSON against the CDM without modifying any tables}
 \usage{
 check_cohort_json(connector, json_path, show_sql = FALSE)
 }
@@ -11,20 +11,22 @@ check_cohort_json(connector, json_path, show_sql = FALSE)
 
 \item{json_path}{Path to an ATLAS cohort definition JSON file.}
 
-\item{show_sql}{Logical. Print the generated SELECT SQL. Default \code{FALSE}.}
+\item{show_sql}{Logical. Print the raw CirceR SQL. Default \code{FALSE}.}
 }
 \value{
-Invisibly, a named list with \verb{$concept_check} and \verb{$candidate_count}.
+Invisibly, a named list with \verb{$concept_check} and
+\verb{$candidate_count}.
 }
 \description{
-Runs three checks without modifying the database:
+Runs three read-only checks:
 \enumerate{
-\item Verifies the JSON parses and the SQL can be extracted.
-\item Reports which concept IDs are present in the CDM vocabulary.
-\item Counts patients with at least one qualifying condition (pre-filter count).
+\item JSON parses and SQL can be generated.
+\item Concept IDs exist in the CDM vocabulary.
+\item Count of patients with at least one qualifying condition code (pre-rules).
 }
 }
 \details{
-Call this before \code{\link[=fetch_cohort_from_json]{fetch_cohort_from_json()}} to determine whether an empty
-cohort result is a SQL/permission error or a genuinely empty population.
+If \code{candidate_count > 0} but \code{\link[=fetch_cohort_from_json]{fetch_cohort_from_json()}} returns 0, the
+inclusion rules (age, prior observation, etc.) are filtering all patients.
+Re-run \code{fetch_cohort_from_json(..., verbose = TRUE)} to inspect the SQL.
 }

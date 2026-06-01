@@ -270,27 +270,35 @@ function(input, output, session) {
   })
 
   # Auto-load when a live connection is passed via launch_cohort_intelligence().
-  # session$onFlushed(once = TRUE) fires after the FIRST complete reactive flush,
-  # which is the earliest point at which the browser is connected and
-  # withProgress() / showNotification() work reliably.
+  #
+  # Pattern: session$onFlushed writes to a reactiveVal; observeEvent reacts.
+  # This is required because onFlushed is a plain R callback (NOT a reactive
+  # context), so withProgress() / showNotification() cannot be called there.
+  # Writing to a reactiveVal from onFlushed schedules a new reactive flush
+  # in which the observeEvent runs -- that IS a reactive context.
+  rv_do_autoload <- shiny::reactiveVal(FALSE)
+
   session$onFlushed(function() {
     env <- CohortIntelligence:::.cohort_intel_env
-    if (!is.null(env$connection) &&
-        is.null(shiny::isolate(rv$quilt_base()))) {
-      connector <- shiny::isolate(.build_connector(input))
-      if (!is.null(connector)) {
-        tryCatch(
-          .run_pipeline(connector, env, rv),
-          error = function(e) {
-            msg <- conditionMessage(e)
-            message("[CohortIntelligence] Auto-load error: ", msg)
-            shiny::showNotification(paste("Load error:", msg), type = "error",
-                                    duration = NULL)
-          }
-        )
-      }
-    }
+    if (!is.null(env$connection)) rv_do_autoload(TRUE)
   }, once = TRUE)
+
+  shiny::observeEvent(rv_do_autoload(), {
+    shiny::req(rv_do_autoload(), is.null(rv$quilt_base()))
+    env       <- CohortIntelligence:::.cohort_intel_env
+    connector <- .build_connector(input)
+    if (!is.null(connector)) {
+      tryCatch(
+        .run_pipeline(connector, env, rv),
+        error = function(e) {
+          msg <- conditionMessage(e)
+          message("[CohortIntelligence] Auto-load error: ", msg)
+          shiny::showNotification(paste("Load error:", msg), type = "error",
+                                  duration = NULL)
+        }
+      )
+    }
+  }, ignoreInit = TRUE)
 
   # Manual load button (demo mode and upload mode)
   shiny::observeEvent(input$btn_load_cohort, {
