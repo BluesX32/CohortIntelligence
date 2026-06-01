@@ -4,23 +4,26 @@
 \alias{fetch_cohort_from_json}
 \title{Instantiate a cohort from an ATLAS JSON file and return cohort members}
 \usage{
-fetch_cohort_from_json(connector, json_path, cohort_id = 1L)
+fetch_cohort_from_json(connector, json_path, cohort_id = 1L, verbose = FALSE)
 }
 \arguments{
-\item{connector}{A \code{cohort_omop_connector} from
-\code{\link[=create_cohort_omop_connector]{create_cohort_omop_connector()}}.}
+\item{connector}{A \code{cohort_omop_connector} from \code{\link[=create_cohort_connector]{create_cohort_connector()}}.}
 
 \item{json_path}{Path to an ATLAS cohort definition JSON file.}
 
-\item{cohort_id}{Integer. ID assigned to this cohort in the temp table.
+\item{cohort_id}{Integer. Cohort definition ID used in the generated table.
 Default \code{1L}.}
+
+\item{verbose}{Logical. Print the generated SQL before executing. Useful
+for diagnosing SQL errors. Default \code{FALSE}.}
 }
 \value{
 tibble(subject_id, cohort_start_date, cohort_end_date)
 }
 \description{
-Reads an ATLAS cohort definition JSON, generates the cohort SQL via
-\code{CirceR}, executes it against the CDM into a session-scoped temp table,
-and returns the resulting cohort member tibble. No permanent cohort schema
-or cohort table is required.
+Reads an ATLAS cohort definition JSON, generates SQL via \code{CirceR}, and
+executes it against the CDM. For SQL Server, a session temp table is used.
+For all other platforms (Spark, Databricks, PostgreSQL, etc.) the cohort
+is written to a permanent table in \code{cdm_schema} with a timestamp-based
+name, queried, and then dropped.
 }

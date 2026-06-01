@@ -44,5 +44,3 @@ launch_cohort_intelligence(
   vocab_schema = vocab_schema,
   json_path    = json_path
 )
-
-DatabaseConnector::disconnect(connection)

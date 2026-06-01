@@ -2,7 +2,7 @@
 % Please edit documentation in R/connect.R
 \name{create_cohort_omop_connector}
 \alias{create_cohort_omop_connector}
-\title{Create an OMOP CDM connector for live database access}
+\title{Create an OMOP CDM connector from connectionDetails (lazy connection)}
 \usage{
 create_cohort_omop_connector(
   connectionDetails,
@@ -18,19 +18,17 @@ create_cohort_omop_connector(
 
 \item{cdm_schema}{\code{character(1)}. Schema containing OMOP CDM tables.}
 
-\item{cohort_schema}{\code{character(1)} or \code{NULL}. Schema holding the cohort
-table (results schema). Defaults to \code{cdm_schema}.}
+\item{cohort_schema}{\code{character(1)} or \code{NULL}. Defaults to \code{cdm_schema}.}
 
-\item{vocab_schema}{\code{character(1)} or \code{NULL}. Vocabulary schema.
-Defaults to \code{cdm_schema}.}
+\item{vocab_schema}{\code{character(1)} or \code{NULL}. Defaults to \code{cdm_schema}.}
 
-\item{cdm_version}{\code{character(1)}. OMOP CDM version. Default \code{"5.4"}.}
+\item{cdm_version}{\code{character(1)}. Default \code{"5.4"}.}
 }
 \value{
 An object of class \code{c("cohort_omop_connector", "cohort_connector")}.
 }
 \description{
-Constructs a connector holding connection details and schema information.
-The database connection is opened lazily and closed immediately after each
-call to \code{\link[=with_cohort_connector]{with_cohort_connector()}}.
+Opens a new connection per query and closes it immediately after.
+Prefer \code{\link[=create_cohort_connector]{create_cohort_connector()}} with a pre-opened connection when
+working with permission-sensitive environments (Databricks, SAFER, etc.).
 }
