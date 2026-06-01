@@ -133,6 +133,15 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
     rv$rank_df(rank_df)
     rv$quilt_base(quilt_base)
 
+    # Auto-select the highest-priority patient so Trajectory Viewer
+    # is pre-populated without requiring a manual quilt click
+    first_patient <- if (!is.null(rank_df) && nrow(rank_df) > 0L) {
+      rank_df$subject_id[which.min(rank_df$rank_position)]
+    } else {
+      cohort_members$subject_id[[1L]]
+    }
+    rv$selected_patient(first_patient)
+
     shiny::setProgress(1.0, detail = "Done.")
     shiny::showNotification(
       sprintf("Cohort loaded: %d patients.", nrow(cohort_members)),
