@@ -11,20 +11,20 @@ check_cohort_json(connector, json_path, show_sql = FALSE)
 
 \item{json_path}{Path to an ATLAS cohort definition JSON file.}
 
-\item{show_sql}{Logical. Print the generated cohort SQL. Default \code{FALSE}.}
+\item{show_sql}{Logical. Print the generated SELECT SQL. Default \code{FALSE}.}
 }
 \value{
-Named list with \verb{$concept_check} and \verb{$candidate_count}.
+Invisibly, a named list with \verb{$concept_check} and \verb{$candidate_count}.
 }
 \description{
 Runs three checks without modifying the database:
 \enumerate{
-\item Verifies the JSON parses correctly.
-\item Reports which concept IDs appear in the CDM vocabulary.
-\item Counts qualifying patients (index events only, ignoring inclusion rules).
+\item Verifies the JSON parses and the SQL can be extracted.
+\item Reports which concept IDs are present in the CDM vocabulary.
+\item Counts patients with at least one qualifying condition (pre-filter count).
 }
 }
 \details{
 Call this before \code{\link[=fetch_cohort_from_json]{fetch_cohort_from_json()}} to determine whether an empty
-cohort is a SQL/permission error or a genuinely empty population.
+cohort result is a SQL/permission error or a genuinely empty population.
 }
