@@ -286,6 +286,15 @@ fetch_cohort_from_json <- function(connector,
     )
 
     names(df) <- tolower(names(df))
+
+    # Normalise column names: CirceR SELECT returns start_date / end_date;
+    # the rest of the pipeline expects cohort_start_date / cohort_end_date.
+    if (!"cohort_start_date" %in% names(df) && "start_date" %in% names(df)) {
+      df$cohort_start_date <- df$start_date
+    }
+    if (!"cohort_end_date" %in% names(df) && "end_date" %in% names(df)) {
+      df$cohort_end_date <- df$end_date
+    }
     for (col in c("cohort_start_date", "cohort_end_date")) {
       if (col %in% names(df)) df[[col]] <- as.Date(df[[col]])
     }
