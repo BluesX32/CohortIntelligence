@@ -165,7 +165,13 @@ run_isolation_forest <- function(feature_matrix,
                                   sample_frac  = 0.25,
                                   random_state = 42L) {
   if (!requireNamespace("isotree", quietly = TRUE)) {
-    rlang::abort("Package 'isotree' is required for run_isolation_forest().")
+    message(
+      "Package 'isotree' is not installed -- anomaly scores set to 0.\n",
+      "  Install it: install.packages('isotree')"
+    )
+    mat <- .prepare_feature_mat(feature_matrix)
+    return(tibble::tibble(subject_id = mat$ids,
+                           anomaly_score = rep(0, length(mat$ids))))
   }
 
   mat <- .prepare_feature_mat(feature_matrix)
@@ -253,9 +259,16 @@ run_full_ml_pipeline <- function(feature_matrix,
 }
 
 .spectral_embed <- function(X, k = 2L) {
-  # Simple spectral embedding via eigenvectors of the Laplacian.
-  # Used as fallback when 'umap' is not available.
-  n     <- nrow(X)
+  # For large n, use PCA (O(n*p^2)) instead of spectral (O(n^3) via eigen).
+  # Spectral is too slow above ~100 patients; PCA gives a usable 2-D layout.
+  n <- nrow(X)
+  if (n > 100L) {
+    message("Using PCA fallback (n = ", n,
+            "). Install 'uwot' for proper UMAP: install.packages('uwot')")
+    pca <- stats::prcomp(X, rank. = as.integer(k), center = TRUE, scale. = FALSE)
+    return(pca$x[, seq_len(min(k, ncol(pca$x))), drop = FALSE])
+  }
+  # Spectral embedding via graph Laplacian (only for small n)
   sigma <- stats::median(stats::dist(X))
   if (sigma == 0) sigma <- 1
   W     <- exp(-as.matrix(stats::dist(X))^2 / (2 * sigma^2))

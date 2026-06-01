@@ -42,6 +42,23 @@ launch_cohort_intelligence <- function(
     rlang::abort("Package 'shiny' is required to launch the dashboard.")
   }
 
+  # Warn upfront about optional ML packages so the user sees it in the
+  # console before the browser opens, not as a silent blank tab.
+  ml_missing <- c("uwot", "cluster", "isotree")[
+    !vapply(c("uwot", "cluster", "isotree"),
+            requireNamespace, logical(1), quietly = TRUE)
+  ]
+  if (length(ml_missing) > 0L) {
+    message(
+      "\n[CohortIntelligence] Missing ML packages: ",
+      paste(ml_missing, collapse = ", "), "\n",
+      "  Anomaly Explorer and Hypothesis Panel will be limited.\n",
+      "  Install with:\n",
+      "    install.packages(c(",
+      paste0('"', ml_missing, '"', collapse = ", "), "))\n"
+    )
+  }
+
   app_dir <- system.file("shiny", package = "CohortIntelligence")
   if (!nzchar(app_dir)) {
     app_dir <- file.path(getwd(), "inst", "shiny")

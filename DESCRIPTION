@@ -7,12 +7,14 @@ Description: Interactive cohort exploration workbench for OMOP CDM studies.
     Loads person-level OMOP domains (conditions, drugs, procedures,
     measurements, visits, observations, death), engineers patient-level feature
     matrices across time windows relative to cohort index dates, runs
-    unsupervised machine learning (UMAP, clustering, isolation forest) to detect
-    subgroups and out-of-distribution patients, ranks patients by review
-    priority, and presents a Shiny dashboard with a reactive quilt plot
-    (cohort-wide bird's-eye heatmap), trajectory viewer, anomaly explorer,
-    and hypothesis generation panel. Designed for OHDSI studies using OMOP
-    CDM v5.3/5.4.
+    unsupervised machine learning (UMAP via 'uwot', k-means clustering via
+    'cluster', isolation forest via 'isotree') to detect subgroups and
+    out-of-distribution patients, ranks patients by review priority, and
+    presents a Shiny dashboard with a reactive quilt plot (cohort-wide
+    bird's-eye heatmap), trajectory viewer, anomaly explorer, hypothesis
+    generation panel, and demographics tab. Designed for OHDSI studies using
+    OMOP CDM v5.3/5.4. ML features require 'uwot', 'cluster', and 'isotree'
+    (all on CRAN): install.packages(c('uwot', 'cluster', 'isotree')).
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

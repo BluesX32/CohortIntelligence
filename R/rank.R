@@ -60,13 +60,36 @@ rank_patients <- function(ml_results,
                                           cluster_noise = 0.25,
                                           sparsity = 0.25),
                            n_tiers = 3L) {
-  # Unpack ml_results
+  # Unpack ml_results -- gracefully handle NULL (ML pipeline unavailable)
+  if (is.null(ml_results)) {
+    # Sparsity-only ranking when ML pipeline did not run
+    message("[CI] ML results unavailable; ranking by data sparsity only.")
+    all_subjects <- tibble::tibble(subject_id = cohort_members$subject_id)
+    sparsity_df  <- compute_sparsity(domain_activity)
+    result <- dplyr::left_join(all_subjects, sparsity_df, by = "subject_id") |>
+      dplyr::mutate(
+        sparsity_score = dplyr::coalesce(sparsity_score, 0),
+        anomaly_score  = 0,
+        cluster_id     = 0L,
+        rank_score     = sparsity_score,
+        rank_position  = rank(-rank_score, ties.method = "first")
+      )
+    n_tiers   <- max(1L, as.integer(n_tiers))
+    tier_size <- ceiling(nrow(result) / n_tiers)
+    tier_names <- c("high","medium","low","very low")[seq_len(n_tiers)]
+    if (n_tiers > 4L) tier_names <- paste0("tier_", seq_len(n_tiers))
+    result <- dplyr::mutate(result,
+      priority_tier = tier_names[ceiling(rank_position / tier_size)]
+    )
+    return(dplyr::select(result, subject_id, rank_score, rank_position,
+                          priority_tier, anomaly_score, cluster_id, sparsity_score))
+  }
   if (is.list(ml_results) && "merged" %in% names(ml_results)) {
     ml_df <- ml_results$merged
   } else if (is.data.frame(ml_results)) {
     ml_df <- ml_results
   } else {
-    rlang::abort("'ml_results' must be a list from run_full_ml_pipeline() or a data frame.")
+    rlang::abort("'ml_results' must be NULL, a list from run_full_ml_pipeline(), or a data frame.")
   }
 
   required_cols <- c("subject_id", "anomaly_score", "cluster_id")

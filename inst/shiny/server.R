@@ -103,24 +103,33 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
     )
 
     shiny::setProgress(0.70, detail = "Running ML pipeline...")
-    ml_res  <- NULL
-    rank_df <- NULL
+    ml_res <- NULL
     if (!is.null(feat_mat) && ncol(feat_mat$wide) > 1L) {
       ml_res <- tryCatch(
         run_full_ml_pipeline(feat_mat$wide),
         error = function(e) {
+          msg <- conditionMessage(e)
+          message("[CohortIntelligence] ML pipeline error: ", msg)
+          message("  Tip: install 'uwot' for reliable UMAP: install.packages('uwot')")
           shiny::showNotification(
-            paste("ML warning:", conditionMessage(e)), type = "warning")
+            paste0("ML pipeline failed: ", msg,
+                   " — Anomaly Explorer unavailable. ",
+                   "Install uwot: install.packages('uwot')"),
+            type = "warning", duration = 10L)
           NULL
         }
       )
-      if (!is.null(ml_res)) {
-        rank_df <- tryCatch(
-          rank_patients(ml_res, domain_act, cohort_members),
-          error = function(e) NULL
-        )
-      }
     }
+
+    # rank_patients() accepts NULL ml_results (falls back to sparsity-only).
+    # Always compute so Patient Selector and priority sorting always work.
+    rank_df <- tryCatch(
+      rank_patients(ml_res, domain_act, cohort_members),
+      error = function(e) {
+        message("[CohortIntelligence] Ranking error: ", conditionMessage(e))
+        NULL
+      }
+    )
 
     shiny::setProgress(0.90, detail = "Building quilt...")
     quilt_base <- build_quilt_data(domain_act, rank_df)
