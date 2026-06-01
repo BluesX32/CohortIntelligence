@@ -309,32 +309,43 @@ function(input, output, session) {
     rank_df          = shiny::reactiveVal(NULL)
   )
 
+  # ── Loading status indicator (replaces the Load Cohort button) ───────────
   output$load_status <- shiny::renderUI({
     if (is.null(rv$quilt_base())) {
-      shiny::p("No cohort loaded.",
-               style = "color: #b8c7ce; font-size: 12px; margin-top: 6px;")
+      shiny::div(
+        style = "margin-top: 8px; text-align: center;",
+        shiny::tags$small(
+          style = "color: #b8c7ce; font-size: 11px;",
+          shiny::icon("spinner"), " Loading cohort..."
+        )
+      )
     } else {
       n <- length(unique(rv$cohort_members()$subject_id))
       shiny::div(
         class = "alert alert-success",
-        style = "margin-top: 8px; padding: 4px 8px; font-size: 12px;",
-        sprintf("%d patients loaded", n)
+        style = "margin-top: 8px; padding: 6px 10px; font-size: 12px;",
+        shiny::icon("circle-check"),
+        sprintf(" %d patients loaded", n)
       )
     }
   })
 
-  # Auto-load when a live connection is passed via launch_cohort_intelligence().
+  # ── Auto-load on session start ────────────────────────────────────────────
+  # session$onFlushed(once=TRUE) fires after the first complete reactive flush
+  # when the browser is connected. Writing to a reactiveVal here schedules a
+  # second flush in which observeEvent runs -- a proper reactive context where
+  # withProgress() / showNotification() work correctly.
   #
-  # Pattern: session$onFlushed writes to a reactiveVal; observeEvent reacts.
-  # This is required because onFlushed is a plain R callback (NOT a reactive
-  # context), so withProgress() / showNotification() cannot be called there.
-  # Writing to a reactiveVal from onFlushed schedules a new reactive flush
-  # in which the observeEvent runs -- that IS a reactive context.
+  # Fires for ALL modes:
+  #   Live connection  -- auto-loads immediately (env$connection set)
+  #   Demo mode        -- auto-loads demo data  (env$connection NULL, no file)
+  #   Upload mode      -- skipped here; triggered by observeEvent(upload_rds)
   rv_do_autoload <- shiny::reactiveVal(FALSE)
 
   session$onFlushed(function() {
-    env <- CohortIntelligence:::.cohort_intel_env
-    if (!is.null(env$connection)) rv_do_autoload(TRUE)
+    env        <- CohortIntelligence:::.cohort_intel_env
+    is_upload  <- isTRUE(shiny::isolate(input$data_mode) == "upload")
+    if (!is_upload) rv_do_autoload(TRUE)
   }, once = TRUE)
 
   shiny::observeEvent(rv_do_autoload(), {
@@ -346,7 +357,7 @@ function(input, output, session) {
         .run_pipeline(connector, env, rv),
         error = function(e) {
           msg <- conditionMessage(e)
-          message("[CohortIntelligence] Auto-load error: ", msg)
+          message("[CohortIntelligence] Load error: ", msg)
           shiny::showNotification(paste("Load error:", msg), type = "error",
                                   duration = NULL)
         }
@@ -354,8 +365,9 @@ function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
-  # Manual load button (demo mode and upload mode)
-  shiny::observeEvent(input$btn_load_cohort, {
+  # ── Upload mode: auto-load as soon as the file is selected ───────────────
+  shiny::observeEvent(input$upload_rds, {
+    shiny::req(input$upload_rds)
     env       <- CohortIntelligence:::.cohort_intel_env
     connector <- .build_connector(input)
     if (!is.null(connector)) {
@@ -363,7 +375,7 @@ function(input, output, session) {
         .run_pipeline(connector, env, rv),
         error = function(e) {
           msg <- conditionMessage(e)
-          message("[CohortIntelligence] Load error: ", msg)
+          message("[CohortIntelligence] Upload load error: ", msg)
           shiny::showNotification(paste("Load error:", msg), type = "error",
                                   duration = NULL)
         }
@@ -407,5 +419,50 @@ function(input, output, session) {
     "hypotheses",
     feature_matrix = shiny::reactive(rv$feature_matrix()),
     ml_results     = shiny::reactive(rv$ml_results())
+  )
+
+  cluster_profileServer(
+    "clusters",
+    rank_df        = shiny::reactive(rv$rank_df()),
+    domain_data    = shiny::reactive(rv$domain_data()),
+    cohort_members = shiny::reactive(rv$cohort_members()),
+    person_data    = shiny::reactive(rv$person_data())
+  )
+
+  # ── Export Report button (visible only after cohort loads) ─────────────
+  output$btn_report_ui <- shiny::renderUI({
+    shiny::req(rv$quilt_base())
+    shiny::downloadButton("btn_report", "Export Report",
+                          icon  = shiny::icon("file-export"),
+                          class = "btn-default btn-sm btn-block",
+                          style = "color: #b8c7ce; margin-bottom: 6px;")
+  })
+
+  output$btn_report <- shiny::downloadHandler(
+    filename = function() paste0("cohort_report_", Sys.Date(), ".html"),
+    content  = function(file) {
+      shiny::withProgress(message = "Building report...", value = 0.5, {
+        tryCatch(
+          export_cohort_report(
+            results = list(
+              cohort_members = rv$cohort_members(),
+              rank_df        = rv$rank_df(),
+              domain_data    = rv$domain_data(),
+              person_data    = rv$person_data(),
+              ml_results     = rv$ml_results(),
+              hypotheses     = NULL,
+              quilt_base     = rv$quilt_base()
+            ),
+            path        = file,
+            cohort_name = "CohortIntelligence Report"
+          ),
+          error = function(e) {
+            message("[CohortIntelligence] Report export error: ",
+                    conditionMessage(e))
+          }
+        )
+        shiny::setProgress(1.0)
+      })
+    }
   )
 }

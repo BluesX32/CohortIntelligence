@@ -560,3 +560,177 @@ build_data_density <- function(domain_data, cohort_members) {
   dplyr::left_join(d, dplyr::select(patient_order, subject_id, patient_row),
                    by = "subject_id")
 }
+
+# ---------------------------------------------------------------------------
+# Cluster characterisation profiles
+# ---------------------------------------------------------------------------
+
+#' Build clinical characterisation profiles for each cluster
+#'
+#' For each cluster, computes:
+#'  * Summary statistics (size, median age, % female, % death, follow-up)
+#'  * Top-N most prevalent concepts per OMOP domain
+#'
+#' These are the inputs to the Cluster Profiles tab.
+#'
+#' @param rank_df tibble from [rank_patients()] with `subject_id` and
+#'   `cluster_id` columns.
+#' @param domain_data Named list from [extract_omop_domains()].
+#' @param cohort_members tibble(subject_id, cohort_start_date,
+#'   cohort_end_date).
+#' @param person_data tibble from [extract_person_demographics()]. `NULL`
+#'   skips age/sex statistics.
+#' @param top_n Integer. Top concepts per domain per cluster. Default 10.
+#' @param domains Character vector. Domains to include in concept ranks.
+#'
+#' @return Named list with `$summary` and `$concepts` tibbles.
+#' @export
+build_cluster_profiles <- function(rank_df,
+                                    domain_data,
+                                    cohort_members,
+                                    person_data  = NULL,
+                                    top_n        = 10L,
+                                    domains      = c("condition","drug",
+                                                     "procedure")) {
+  if (is.null(rank_df) || nrow(rank_df) == 0L) {
+    return(list(
+      summary  = tibble::tibble(),
+      concepts = tibble::tibble()
+    ))
+  }
+
+  cluster_map <- dplyr::select(rank_df, subject_id, cluster_id)
+  n_total     <- nrow(cluster_map)
+
+  # -- Summary stats per cluster --------------------------------------------
+  summary_base <- cluster_map |>
+    dplyr::group_by(cluster_id) |>
+    dplyr::summarise(
+      n_patients = dplyr::n(),
+      .groups    = "drop"
+    ) |>
+    dplyr::mutate(
+      pct_cohort = round(100 * n_patients / n_total, 1)
+    )
+
+  # Age and sex from person_data
+  age_sex <- if (!is.null(person_data) && nrow(person_data) > 0L &&
+                  "birth_year" %in% names(person_data)) {
+    pd <- dplyr::rename(person_data, subject_id = person_id) |>
+      dplyr::left_join(
+        dplyr::select(cohort_members, subject_id, cohort_start_date),
+        by = "subject_id"
+      ) |>
+      dplyr::mutate(
+        age_at_index = as.integer(
+          lubridate::year(cohort_start_date) - birth_year
+        ),
+        is_female    = tolower(gender_name %||% "") %in%
+                         c("female", "f", "8532")
+      )
+    dplyr::left_join(cluster_map, pd, by = "subject_id") |>
+      dplyr::group_by(cluster_id) |>
+      dplyr::summarise(
+        median_age   = median(age_at_index, na.rm = TRUE),
+        pct_female   = round(100 * mean(is_female, na.rm = TRUE), 1),
+        .groups      = "drop"
+      )
+  } else {
+    tibble::tibble(
+      cluster_id = summary_base$cluster_id,
+      median_age = NA_real_,
+      pct_female = NA_real_
+    )
+  }
+
+  # Median follow-up
+  fu_df <- dplyr::left_join(
+    cluster_map,
+    dplyr::select(cohort_members, subject_id, cohort_start_date,
+                  cohort_end_date),
+    by = "subject_id"
+  ) |>
+    dplyr::mutate(
+      followup_days = as.integer(
+        dplyr::coalesce(cohort_end_date, cohort_start_date) - cohort_start_date
+      )
+    ) |>
+    dplyr::group_by(cluster_id) |>
+    dplyr::summarise(
+      median_followup_days = median(followup_days, na.rm = TRUE),
+      .groups              = "drop"
+    )
+
+  # % death
+  death_df <- if (!is.null(domain_data[["death"]]) &&
+                   nrow(domain_data[["death"]]) > 0L) {
+    dead_ids <- unique(domain_data[["death"]]$person_id)
+    cluster_map |>
+      dplyr::mutate(has_death = subject_id %in% dead_ids) |>
+      dplyr::group_by(cluster_id) |>
+      dplyr::summarise(
+        pct_death = round(100 * mean(has_death), 1),
+        .groups   = "drop"
+      )
+  } else {
+    tibble::tibble(cluster_id = summary_base$cluster_id, pct_death = 0)
+  }
+
+  summary_df <- summary_base |>
+    dplyr::left_join(age_sex, by = "cluster_id") |>
+    dplyr::left_join(fu_df,   by = "cluster_id") |>
+    dplyr::left_join(death_df, by = "cluster_id") |>
+    dplyr::arrange(cluster_id)
+
+  # -- Top concepts per domain per cluster ----------------------------------
+  domain_concept_col <- c(
+    condition   = "condition_concept_id",
+    drug        = "drug_concept_id",
+    procedure   = "procedure_concept_id",
+    measurement = "measurement_concept_id",
+    observation = "observation_concept_id"
+  )
+  domain_name_col <- c(
+    condition   = "condition_name",
+    drug        = "drug_name",
+    procedure   = "procedure_name",
+    measurement = "measurement_name",
+    observation = "observation_name"
+  )
+
+  active_domains <- intersect(domains, names(domain_data))
+  active_domains <- intersect(active_domains, names(domain_concept_col))
+
+  concepts_df <- purrr::map_dfr(active_domains, function(d) {
+    df         <- domain_data[[d]]
+    name_col   <- domain_name_col[[d]]
+    if (is.null(df) || nrow(df) == 0L || !name_col %in% names(df)) {
+      return(tibble::tibble())
+    }
+
+    df |>
+      dplyr::rename(subject_id = person_id) |>
+      dplyr::inner_join(cluster_map, by = "subject_id") |>
+      dplyr::group_by(cluster_id, concept_name = .data[[name_col]]) |>
+      dplyr::summarise(
+        n_patients = dplyr::n_distinct(subject_id),
+        .groups    = "drop"
+      ) |>
+      dplyr::left_join(
+        dplyr::select(summary_df, cluster_id, n_patients),
+        by     = "cluster_id",
+        suffix = c("", "_total")
+      ) |>
+      dplyr::mutate(
+        domain     = d,
+        prevalence = round(100 * n_patients / n_patients_total, 1)
+      ) |>
+      dplyr::select(cluster_id, domain, concept_name, n_patients, prevalence) |>
+      dplyr::arrange(cluster_id, dplyr::desc(prevalence)) |>
+      dplyr::group_by(cluster_id) |>
+      dplyr::slice_head(n = as.integer(top_n)) |>
+      dplyr::ungroup()
+  })
+
+  list(summary = summary_df, concepts = concepts_df)
+}

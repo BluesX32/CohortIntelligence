@@ -2,12 +2,12 @@
 # Cohort instantiation from ATLAS JSON (CirceR format).
 #
 # CirceR generates SQL that creates 7 intermediate tables:
-#   Codesets → qualified_events → Inclusion_0 → inclusion_events
-#   → included_events → strategy_ends → cohort_rows → final_cohort
+#   Codesets -> qualified_events -> Inclusion_0 -> inclusion_events
+#   -> included_events -> strategy_ends -> cohort_rows -> final_cohort
 #
 # Strategy (fully read-only, zero write permissions required):
 #   1. Render parameters (SqlRender::render)
-#   2. Split at DELETE FROM sentinel → setup section + final SELECT
+#   2. Split at DELETE FROM sentinel -> setup section + final SELECT
 #   3. Translate setup to Spark dialect (CREATE TABLE ... USING DELTA ...)
 #   4. Convert every CREATE TABLE / INSERT INTO in the setup into a CTE
 #   5. Combine: WITH cte1 AS (...), ..., cteN AS (...) <final SELECT>
@@ -32,7 +32,7 @@
 }
 
 # ---------------------------------------------------------------------------
-# Internal: convert translated Spark setup SQL to a WITH … CTE preamble
+# Internal: convert translated Spark setup SQL to a WITH ... CTE preamble
 # ---------------------------------------------------------------------------
 
 # Takes the Spark-translated setup section (the part before DELETE FROM sentinel)
@@ -40,12 +40,12 @@
 # Returns a character string: "WITH cte1 AS (...), cte2 AS (...), ..."
 #
 # Handles:
-#   DROP TABLE IF EXISTS xxx          → skip
-#   DROP TABLE xxx                    → skip
-#   TRUNCATE TABLE xxx                → skip
-#   CREATE TABLE xxx USING DELTA AS SELECT ... WHERE 1=0   → schema-only init, skip
-#   CREATE TABLE xxx USING DELTA AS SELECT <real body>     → CTE body
-#   INSERT INTO xxx (cols) SELECT <body>                   → UNION ALL to existing CTE
+#   DROP TABLE IF EXISTS xxx          -> skip
+#   DROP TABLE xxx                    -> skip
+#   TRUNCATE TABLE xxx                -> skip
+#   CREATE TABLE xxx USING DELTA AS SELECT ... WHERE 1=0   -> schema-only init, skip
+#   CREATE TABLE xxx USING DELTA AS SELECT <real body>     -> CTE body
+#   INSERT INTO xxx (cols) SELECT <body>                   -> UNION ALL to existing CTE
 
 .spark_setup_to_cte <- function(setup_sql) {
   # Split on semicolons (safe: CirceR SQL has no semicolons inside statements)

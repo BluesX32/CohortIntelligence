@@ -23,7 +23,11 @@ utils::globalVariables(c(
   "gender_concept_id", "race_concept_id", "ethnicity_concept_id",
   "gender_name", "race_name", "ethnicity_name",
   "age_at_index", "calendar_month", "n_patients",
-  "median_followup", "median_age", "pct_death"
+  "median_followup", "median_age", "pct_death",
+  "prevalence", "n_patients_total", "pct_cohort",
+  "pct_female", "median_followup_days", "is_female",
+  "has_death", "followup_days", "max_prev",
+  "cluster_label", "median_fu", "concept_name"
 ))
 
 `%||%` <- function(x, y) if (!is.null(x)) x else y
