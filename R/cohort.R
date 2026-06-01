@@ -1,14 +1,16 @@
 # cohort.R
 # Cohort instantiation from ATLAS JSON (CirceR format).
 #
-# CirceR with generateStats = FALSE generates two sections:
-#   SETUP  -- creates #Codesets (temp table of expanded concept IDs)
-#   COHORT -- DELETE FROM target + INSERT INTO target SELECT ...
+# CirceR with generateStats = FALSE generates SQL in two sections:
 #
-# Strategy:
-#   1. Execute the SETUP section (creates #Codesets; only needs temp-space access)
-#   2. Extract the SELECT from the INSERT and run it as a plain query
-#   → No writes to CDM schema, no create-table, no permissions beyond SELECT
+#   SETUP  -- CREATE TABLE #Codesets; INSERT INTO #Codesets SELECT (concept expansion)
+#   COHORT -- DELETE FROM <target>; INSERT INTO <target> SELECT (the cohort logic)
+#
+# Strategy (read-only, no CDM write permissions required):
+#   1. Execute the SETUP section -- only touches session temp space (#Codesets)
+#   2. Extract the SELECT from the final INSERT and run it as a plain query
+#
+# All DB calls go through DatabaseConnector's standard API (no JDBC/ODBC branches).
 
 # ---------------------------------------------------------------------------
 # Internal: safe DBMS detection
@@ -16,15 +18,13 @@
 
 .get_dbms <- function(active) {
   dbms <- active$dbms
-  if (!is.null(dbms) && length(dbms) == 1L && nzchar(dbms)) return(dbms)
+  if (length(dbms) == 1L && nzchar(dbms %||% "")) return(dbms)
   tryCatch(
     {
       d <- DatabaseConnector::dbms(active$conn)
-      if (length(d) == 1L && nzchar(d)) d else "sql server"
+      if (length(d) == 1L && nzchar(d)) d else "spark"
     },
-    error = function(e) {
-      if (inherits(active$conn, "JDBCConnection")) "spark" else "sql server"
-    }
+    error = function(e) "spark"
   )
 }
 
@@ -36,18 +36,18 @@
 #'
 #' Reads an ATLAS cohort definition JSON, generates SQL via `CirceR`, then:
 #'
-#' 1. Executes the **setup section** (creates the `#Codesets` temp table that
-#'    expands concept IDs using `concept_ancestor`). This only requires access
-#'    to temp space -- no write permission to the CDM schema is needed.
-#' 2. Extracts the **SELECT** from the final `INSERT INTO ... SELECT` and runs
-#'    it as a plain read-only query.
+#' 1. Executes the **setup section** (creates `#Codesets` with expanded concept
+#'    IDs). Writes only to session temp space -- no CDM write permissions.
+#' 2. Extracts the **SELECT** from the `INSERT INTO ... SELECT` and executes it
+#'    as a plain read-only query.
 #'
-#' No permanent table is created in the CDM schema.
+#' All database calls use `DatabaseConnector` regardless of connection type
+#' (ODBC, JDBC, or DBI).
 #'
 #' @param connector A `cohort_omop_connector` from [create_cohort_connector()].
 #' @param json_path Path to an ATLAS cohort definition JSON file.
-#' @param cohort_id Integer. Cohort definition ID. Default `1L`.
-#' @param verbose Logical. Print both SQL sections for debugging. Default
+#' @param cohort_id Integer. Default `1L`.
+#' @param verbose Logical. Print every SQL section to the console. Default
 #'   `FALSE`.
 #'
 #' @return tibble(subject_id, cohort_start_date, cohort_end_date)
@@ -59,148 +59,183 @@ fetch_cohort_from_json <- function(connector,
   for (pkg in c("CirceR", "SqlRender", "DatabaseConnector")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       rlang::abort(sprintf(
-        "Package '%s' is required. Install: remotes::install_github('OHDSI/%s')",
+        "Package '%s' required. Install: remotes::install_github('OHDSI/%s')",
         pkg, pkg
       ))
     }
   }
+
+  json_path <- normalizePath(json_path, mustWork = FALSE)
   if (!file.exists(json_path)) {
     rlang::abort(paste0("JSON file not found: ", json_path))
   }
 
+  # -- Step 1: parse JSON and generate SQL -----------------------------------
+  message("[CI] Parsing: ", basename(json_path))
   json_str   <- paste(readLines(json_path, warn = FALSE), collapse = "\n")
-  expression <- CirceR::cohortExpressionFromJson(json_str)
+
+  expression <- tryCatch(
+    CirceR::cohortExpressionFromJson(json_str),
+    error = function(e) rlang::abort(
+      paste0("CirceR failed to parse JSON: ", conditionMessage(e))
+    )
+  )
+
   opts       <- CirceR::createGenerateOptions(generateStats = FALSE)
-  cohort_sql <- CirceR::buildCohortQuery(expression, options = opts)
+  cohort_sql <- tryCatch(
+    CirceR::buildCohortQuery(expression, options = opts),
+    error = function(e) rlang::abort(
+      paste0("CirceR failed to build SQL: ", conditionMessage(e))
+    )
+  )
+
+  if (length(cohort_sql) == 0L || !nzchar(cohort_sql %||% "")) {
+    rlang::abort(
+      "CirceR::buildCohortQuery() returned empty SQL. JSON may be malformed."
+    )
+  }
+  message("[CI] CirceR SQL generated (", nchar(cohort_sql), " chars).")
 
   with_cohort_connector(connector, function(active) {
     dbms <- .get_dbms(active)
+    message("[CI] DBMS: ", dbms)
 
-    # ------------------------------------------------------------------
-    # Sentinel markers: unique strings that will not appear in real SQL
-    # ------------------------------------------------------------------
+    # Unique sentinel markers -- will never appear in real SQL
     S_SCHEMA <- "CI_MARKER_SCHEMA_7x9"
     S_TABLE  <- "CI_MARKER_TABLE_7x9"
 
-    # Render the full CirceR SQL with sentinel markers for the target table
-    sql_full <- SqlRender::render(
-      cohort_sql,
-      cdm_database_schema        = active$cdm_schema,
-      vocabulary_database_schema = active$vocab_schema,
-      target_database_schema     = S_SCHEMA,
-      target_cohort_table        = S_TABLE,
-      target_cohort_id           = as.integer(cohort_id),
-      results_database_schema    = active$cdm_schema
+    # -- Step 2: render parameter substitution --------------------------------
+    sql_full <- tryCatch(
+      SqlRender::render(
+        cohort_sql,
+        cdm_database_schema        = active$cdm_schema,
+        vocabulary_database_schema = active$vocab_schema,
+        target_database_schema     = S_SCHEMA,
+        target_cohort_table        = S_TABLE,
+        target_cohort_id           = as.integer(cohort_id),
+        results_database_schema    = active$cdm_schema
+      ),
+      error = function(e) rlang::abort(
+        paste0("SqlRender::render() failed: ", conditionMessage(e))
+      )
     )
 
+    if (length(sql_full) == 0L || !nzchar(sql_full %||% "")) {
+      rlang::abort(paste0(
+        "SqlRender::render() returned empty SQL.\n",
+        "CDM schema: ", active$cdm_schema, "\n",
+        "Vocab schema: ", active$vocab_schema
+      ))
+    }
+    message("[CI] SQL rendered (", nchar(sql_full), " chars).")
+
     if (verbose) {
-      message("\n=== Full rendered CirceR SQL ===\n", sql_full, "\n===\n")
+      message("\n=== Full rendered SQL ===\n", sql_full, "\n===\n")
     }
 
-    # ------------------------------------------------------------------
-    # Split: everything BEFORE the DELETE FROM sentinel is setup SQL.
-    # The setup section creates #Codesets (concept expansion).
-    # Only temp-space write access is needed there.
-    # ------------------------------------------------------------------
+    # -- Step 3: split at DELETE FROM sentinel --------------------------------
+    # Everything BEFORE the DELETE is the #Codesets setup section.
+    # Everything AFTER (and including) the DELETE is the cohort section.
     delete_pattern <- paste0(
       "DELETE\\s+FROM\\s+", S_SCHEMA, "\\.", S_TABLE
     )
-    delete_pos <- regexpr(delete_pattern, sql_full, perl = TRUE,
-                          ignore.case = TRUE)
+    delete_pos <- regexpr(delete_pattern, sql_full,
+                          perl = TRUE, ignore.case = TRUE)
+
+    if (length(delete_pos) == 0L) {
+      rlang::abort("Regex on SQL returned integer(0). SQL may be character(0).")
+    }
 
     setup_sql <- if (delete_pos > 1L) {
       trimws(substring(sql_full, 1L, delete_pos - 1L))
     } else {
       ""
     }
+    message("[CI] Setup section: ", nchar(setup_sql), " chars.")
 
-    # ------------------------------------------------------------------
-    # Extract the SELECT from INSERT INTO sentinel (...) SELECT ...
-    # ------------------------------------------------------------------
+    # -- Step 4: extract SELECT from INSERT INTO sentinel ... SELECT ----------
     insert_pattern <- paste0(
       "INSERT\\s+INTO\\s+", S_SCHEMA, "\\.", S_TABLE,
       "\\s*\\([^)]+\\)\\s*"
     )
     m <- regexpr(insert_pattern, sql_full, ignore.case = TRUE, perl = TRUE)
 
-    if (m == -1L) {
+    if (length(m) == 0L || m == -1L) {
       rlang::abort(paste0(
-        "Could not find INSERT statement in CirceR SQL for: ", basename(json_path),
-        "\nRe-run with verbose = TRUE to inspect the generated SQL."
+        "Could not find INSERT INTO ", S_SCHEMA, ".", S_TABLE,
+        " in rendered SQL.\n",
+        "Re-run with verbose = TRUE to inspect the SQL."
       ))
     }
 
-    # Everything after the INSERT INTO ... (cols) header
-    select_sql <- substring(sql_full, m + attr(m, "match.length"))
-    # Drop from the first semicolon that terminates this SELECT statement.
-    # Use a lookahead so we don't drop semicolons inside string literals.
-    select_sql <- trimws(gsub(";.*$", "", select_sql))
+    # Extract everything after the INSERT INTO header.
+    # Use perl = TRUE with [\\s\\S]* to match across newlines so that the
+    # trailing semicolons AND any extra DELETE/INSERT statements after the
+    # main SELECT are all removed.
+    after_insert <- substring(sql_full, m + attr(m, "match.length"))
+    select_sql   <- trimws(gsub(";[\\s\\S]*$", "", after_insert, perl = TRUE))
 
-    # ------------------------------------------------------------------
-    # Translate both sections for the target DBMS
-    # ------------------------------------------------------------------
+    if (!nzchar(select_sql)) {
+      rlang::abort("Extracted SELECT is empty after removing trailing SQL.")
+    }
+    message("[CI] Extracted SELECT (", nchar(select_sql), " chars).")
+
+    # -- Step 5: translate for target DBMS ------------------------------------
     if (nzchar(setup_sql)) {
       setup_translated <- SqlRender::translate(setup_sql, targetDialect = dbms)
       if (verbose) {
-        message("\n=== Setup SQL (translated for ", dbms, ") ===\n",
-                setup_translated, "\n===\n")
+        message("\n=== Setup SQL (", dbms, ") ===\n", setup_translated, "\n===\n")
       }
+      message("[CI] Executing setup SQL (#Codesets)...")
       tryCatch(
         DatabaseConnector::executeSql(
           active$conn, setup_translated,
           progressBar = FALSE, reportOverallTime = FALSE
         ),
-        error = function(e) {
-          rlang::abort(paste0(
-            "Codesets setup failed (createing #Codesets temp table).\n",
-            "DBMS: ", dbms, "\n",
-            "Vocab schema: ", active$vocab_schema, "\n",
-            "Hint: re-run with verbose = TRUE.\n",
-            "Error: ", conditionMessage(e)
-          ))
-        }
+        error = function(e) rlang::abort(paste0(
+          "Setup SQL failed (#Codesets creation).\n",
+          "DBMS: ", dbms, "\n",
+          "Vocab schema: ", active$vocab_schema, "\n",
+          "Error: ", conditionMessage(e)
+        ))
       )
+      message("[CI] Setup SQL done.")
     }
 
     select_translated <- SqlRender::translate(select_sql, targetDialect = dbms)
     if (verbose) {
-      message("\n=== Cohort SELECT SQL (translated for ", dbms, ") ===\n",
-              select_translated, "\n===\n")
+      message("\n=== Cohort SELECT (", dbms, ") ===\n", select_translated, "\n===\n")
     }
 
+    # -- Step 6: run cohort SELECT --------------------------------------------
+    message("[CI] Running cohort SELECT...")
     df <- tryCatch(
-      {
-        if (inherits(active$conn, "JDBCConnection")) {
-          as.data.frame(DBI::dbGetQuery(active$conn, select_translated))
-        } else {
-          DatabaseConnector::querySql(active$conn, select_translated,
-                                      snakeCaseToCamelCase = FALSE)
-        }
-      },
-      error = function(e) {
-        rlang::abort(paste0(
-          "Cohort SELECT failed.\n",
-          "DBMS: ", dbms, "\n",
-          "Hint: re-run with verbose = TRUE to inspect the SELECT.\n",
-          "Error: ", conditionMessage(e)
-        ))
-      }
+      DatabaseConnector::querySql(
+        active$conn, select_translated,
+        snakeCaseToCamelCase = FALSE
+      ),
+      error = function(e) rlang::abort(paste0(
+        "Cohort SELECT failed.\n",
+        "DBMS: ", dbms, "\n",
+        "Hint: re-run with verbose = TRUE to inspect the SELECT SQL.\n",
+        "Error: ", conditionMessage(e)
+      ))
     )
 
     names(df) <- tolower(names(df))
     for (col in c("cohort_start_date", "cohort_end_date")) {
       if (col %in% names(df)) df[[col]] <- as.Date(df[[col]])
     }
-
-    # CirceR's SELECT aliases person_id as subject_id; handle both column names
+    # CirceR SELECT uses person_id; normalise to subject_id
     if (!"subject_id" %in% names(df) && "person_id" %in% names(df)) {
       df$subject_id <- df$person_id
     }
 
     n <- nrow(df)
-    message(sprintf("Cohort '%s': %d patient%s found.",
+    message(sprintf("[CI] Cohort '%s': %d patient%s found.",
                     basename(json_path), n, if (n == 1L) "" else "s"))
-    tibble::as_tibble(df[, c("subject_id", "cohort_start_date", "cohort_end_date")])
+    tibble::as_tibble(df[, c("subject_id", "cohort_start_date",
+                              "cohort_end_date")])
   })
 }
 
@@ -208,23 +243,19 @@ fetch_cohort_from_json <- function(connector,
 # check_cohort_json
 # ---------------------------------------------------------------------------
 
-#' Diagnose a cohort JSON against the CDM without modifying any tables
+#' Diagnose a cohort JSON against the CDM (read-only)
 #'
-#' Runs three read-only checks:
-#' 1. JSON parses and SQL can be generated.
-#' 2. Concept IDs exist in the CDM vocabulary.
-#' 3. Count of patients with at least one qualifying condition code (pre-rules).
+#' Checks that concept IDs exist in the vocabulary and counts patients with at
+#' least one qualifying condition code (before any inclusion rules are applied).
 #'
-#' If `candidate_count > 0` but [fetch_cohort_from_json()] returns 0, the
-#' inclusion rules (age, prior observation, etc.) are filtering all patients.
-#' Re-run `fetch_cohort_from_json(..., verbose = TRUE)` to inspect the SQL.
+#' If `candidate_count > 0` but [fetch_cohort_from_json()] returns 0, re-run
+#' `fetch_cohort_from_json(..., verbose = TRUE)` to inspect the SQL.
 #'
 #' @param connector A `cohort_omop_connector` from [create_cohort_connector()].
 #' @param json_path Path to an ATLAS cohort definition JSON file.
 #' @param show_sql Logical. Print the raw CirceR SQL. Default `FALSE`.
 #'
-#' @return Invisibly, a named list with `$concept_check` and
-#'   `$candidate_count`.
+#' @return Invisibly, a named list with `$concept_check` and `$candidate_count`.
 #' @export
 check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
   for (pkg in c("CirceR", "SqlRender")) {
@@ -235,10 +266,10 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
       ))
     }
   }
-  if (!file.exists(json_path)) rlang::abort(paste0("JSON file not found: ", json_path))
+  json_path <- normalizePath(json_path, mustWork = FALSE)
+  if (!file.exists(json_path)) rlang::abort(paste0("JSON not found: ", json_path))
 
   message("--- Checking: ", basename(json_path), " ---")
-
   json_str   <- paste(readLines(json_path, warn = FALSE), collapse = "\n")
   expression <- tryCatch(
     CirceR::cohortExpressionFromJson(json_str),
@@ -247,7 +278,7 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
   concept_ids <- .extract_concept_ids(json_str)
   message(sprintf("JSON OK. Concept IDs: %s",
                   if (length(concept_ids)) paste(concept_ids, collapse = ", ")
-                  else "(none extracted)"))
+                  else "(none)"))
 
   if (show_sql) {
     opts <- CirceR::createGenerateOptions(generateStats = FALSE)
@@ -258,7 +289,6 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
   with_cohort_connector(connector, function(active) {
     dbms <- .get_dbms(active)
 
-    # 1. Vocabulary check
     concept_check <- tibble::tibble()
     if (length(concept_ids) > 0L) {
       vocab_sql <- SqlRender::translate(
@@ -273,12 +303,8 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
       )
       concept_check <- tryCatch(
         {
-          df <- if (inherits(active$conn, "JDBCConnection")) {
-            as.data.frame(DBI::dbGetQuery(active$conn, vocab_sql))
-          } else {
-            DatabaseConnector::querySql(active$conn, vocab_sql,
-                                         snakeCaseToCamelCase = FALSE)
-          }
+          df <- DatabaseConnector::querySql(active$conn, vocab_sql,
+                                             snakeCaseToCamelCase = FALSE)
           names(df) <- tolower(names(df))
           tibble::as_tibble(df)
         },
@@ -287,15 +313,20 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
           tibble::tibble()
         }
       )
-      message(sprintf("Vocabulary: %d / %d concept(s) found in CDM.",
+      message(sprintf("Vocabulary: %d / %d concept(s) found.",
                       nrow(concept_check), length(concept_ids)))
       if (nrow(concept_check) > 0L) print(concept_check)
     }
 
-    # 2. Candidate count (patients with >=1 qualifying condition, pre-rules)
     candidate_count <- NA_integer_
-    cond_ids <- concept_ids[concept_ids %in%
-      (concept_check$concept_id[concept_check$domain_id == "Condition"])]
+    cond_ids <- if (nrow(concept_check) > 0L) {
+      concept_check$concept_id[
+        tolower(concept_check$domain_id) == "condition"
+      ]
+    } else {
+      concept_ids
+    }
+
     if (length(cond_ids) > 0L) {
       count_sql <- SqlRender::translate(
         SqlRender::render(
@@ -309,12 +340,8 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
       )
       candidate_count <- tryCatch(
         {
-          df <- if (inherits(active$conn, "JDBCConnection")) {
-            as.data.frame(DBI::dbGetQuery(active$conn, count_sql))
-          } else {
-            DatabaseConnector::querySql(active$conn, count_sql,
-                                         snakeCaseToCamelCase = FALSE)
-          }
+          df <- DatabaseConnector::querySql(active$conn, count_sql,
+                                             snakeCaseToCamelCase = FALSE)
           names(df) <- tolower(names(df))
           as.integer(df$n[[1L]])
         },
@@ -324,15 +351,13 @@ check_cohort_json <- function(connector, json_path, show_sql = FALSE) {
         }
       )
       if (is.na(candidate_count)) {
-        message("Candidate count query failed -- check CDM schema and permissions.")
+        message("Count query failed.")
       } else if (candidate_count == 0L) {
-        message("0 patients with matching concept IDs -- cohort will be empty.")
+        message("0 patients match -- cohort will be empty.")
       } else {
-        message(sprintf(
-          "%d patients with >= 1 qualifying condition (before inclusion rules).",
-          candidate_count
-        ))
-        message("If fetch_cohort_from_json() returns 0, run it with verbose = TRUE.")
+        message(sprintf("%d patients with >=1 qualifying condition (pre-rules).",
+                        candidate_count))
+        message("If fetch_cohort_from_json() returns 0, run with verbose = TRUE.")
       }
     }
 

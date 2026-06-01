@@ -56,10 +56,7 @@ create_cohort_connector <- function(connection,
     rlang::abort("'cdm_schema' must be a non-empty character string.")
   }
   dbms_str <- tryCatch(DatabaseConnector::dbms(connection),
-                        error = function(e) {
-                          if (inherits(connection, "JDBCConnection")) "spark"
-                          else "sql server"
-                        })
+                        error = function(e) "spark")
   structure(
     list(
       type              = "omop",

@@ -28,11 +28,7 @@ query_cohort <- function(connector, sql_path, params) {
   sql     <- do.call(SqlRender::render, c(list(sql = sql_raw), params))
   sql     <- SqlRender::translate(sql, targetDialect = dbms)
 
-  if (inherits(connector$conn, "JDBCConnection")) {
-    as.data.frame(DBI::dbGetQuery(connector$conn, sql))
-  } else {
-    DatabaseConnector::querySql(connector$conn, sql, snakeCaseToCamelCase = FALSE)
-  }
+  DatabaseConnector::querySql(connector$conn, sql, snakeCaseToCamelCase = FALSE)
 }
 
 .normalise_names <- function(df) {

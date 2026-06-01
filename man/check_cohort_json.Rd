@@ -2,7 +2,7 @@
 % Please edit documentation in R/cohort.R
 \name{check_cohort_json}
 \alias{check_cohort_json}
-\title{Diagnose a cohort JSON against the CDM without modifying any tables}
+\title{Diagnose a cohort JSON against the CDM (read-only)}
 \usage{
 check_cohort_json(connector, json_path, show_sql = FALSE)
 }
@@ -14,19 +14,13 @@ check_cohort_json(connector, json_path, show_sql = FALSE)
 \item{show_sql}{Logical. Print the raw CirceR SQL. Default \code{FALSE}.}
 }
 \value{
-Invisibly, a named list with \verb{$concept_check} and
-\verb{$candidate_count}.
+Invisibly, a named list with \verb{$concept_check} and \verb{$candidate_count}.
 }
 \description{
-Runs three read-only checks:
-\enumerate{
-\item JSON parses and SQL can be generated.
-\item Concept IDs exist in the CDM vocabulary.
-\item Count of patients with at least one qualifying condition code (pre-rules).
-}
+Checks that concept IDs exist in the vocabulary and counts patients with at
+least one qualifying condition code (before any inclusion rules are applied).
 }
 \details{
-If \code{candidate_count > 0} but \code{\link[=fetch_cohort_from_json]{fetch_cohort_from_json()}} returns 0, the
-inclusion rules (age, prior observation, etc.) are filtering all patients.
-Re-run \code{fetch_cohort_from_json(..., verbose = TRUE)} to inspect the SQL.
+If \code{candidate_count > 0} but \code{\link[=fetch_cohort_from_json]{fetch_cohort_from_json()}} returns 0, re-run
+\code{fetch_cohort_from_json(..., verbose = TRUE)} to inspect the SQL.
 }
