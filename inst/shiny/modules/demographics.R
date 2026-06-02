@@ -50,32 +50,58 @@ demographicsUI <- function(id) {
 demographicsServer <- function(id, cohort_members, domain_data, person_data) {
   shiny::moduleServer(id, function(input, output, session) {
 
-    # n_patients is derived directly -- never depends on person_data
+    # ---------------------------------------------------------------------------
+    # Reactive computations
+    # IMPORTANT: none of these use shiny::req() -- they always return a valid
+    # object so that every output can render even before the cohort loads.
+    # Using req() would silently abort the reactive and leave outputs blank.
+    # ---------------------------------------------------------------------------
+
+    # Cohort member count (always an integer, 0 when not yet loaded)
     n_patients_rv <- shiny::reactive({
       cm <- cohort_members()
-      if (is.null(cm)) return(0L)
+      if (is.null(cm) || nrow(cm) == 0L) return(0L)
       nrow(cm)
     })
 
-    # Full summary (may be NULL if build_cohort_summary fails)
+    # Full summary -- always returns a valid list (never NULL, never aborts)
     summary_rv <- shiny::reactive({
-      shiny::req(cohort_members())
+      cm <- cohort_members()
+
+      # Fallback list used when cohort is not yet loaded or summary fails
+      fallback <- list(
+        n_patients      = if (is.null(cm)) 0L else nrow(cm),
+        median_followup = NA_real_,
+        median_age      = NA_real_,
+        pct_death       = NA_real_,
+        age_df          = tibble::tibble(),
+        sex_df          = tibble::tibble(gender_name = character(0),
+                                          n           = integer(0)),
+        race_df         = tibble::tibble(race_name = character(0),
+                                          n         = integer(0))
+      )
+
+      if (is.null(cm) || nrow(cm) == 0L) return(fallback)
+
       tryCatch(
-        build_cohort_summary(cohort_members(), person_data()),
+        build_cohort_summary(cm, person_data()),
         error = function(e) {
           message("[CI Demographics] build_cohort_summary failed: ",
                   conditionMessage(e))
-          NULL
+          fallback
         }
       )
     })
 
+    # Data density -- always returns a tibble (empty when not ready)
     density_rv <- shiny::reactive({
-      shiny::req(cohort_members())
+      cm <- cohort_members()
       dd <- domain_data()
-      if (is.null(dd)) return(tibble::tibble())
+      if (is.null(cm) || nrow(cm) == 0L || is.null(dd)) {
+        return(tibble::tibble())
+      }
       tryCatch(
-        build_data_density(dd, cohort_members()),
+        build_data_density(dd, cm),
         error = function(e) {
           message("[CI Demographics] build_data_density failed: ",
                   conditionMessage(e))
@@ -84,21 +110,25 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
       )
     })
 
-    # ── Value boxes ───────────────────────────────────────────────────────────
+    # ── Value boxes (all must render regardless of data state) ───────────────
     output$box_n <- shinydashboard::renderValueBox({
+      n <- n_patients_rv()
       shinydashboard::valueBox(
-        value    = format(n_patients_rv(), big.mark = ","),
+        value    = if (n == 0L) "Loading..." else format(n, big.mark = ","),
         subtitle = "Patients in cohort",
         icon     = shiny::icon("users"),
-        color    = "blue"
+        color    = if (n == 0L) "light-blue" else "blue"
       )
     })
 
     output$box_fu <- shinydashboard::renderValueBox({
       s   <- summary_rv()
-      val <- if (!is.null(s) && !is.na(s$median_followup)) {
-        paste0(round(s$median_followup / 30.4375, 1), " mo")
-      } else "N/A"
+      val <- tryCatch({
+        fu <- s$median_followup
+        if (!is.null(fu) && !is.na(fu) && is.finite(fu))
+          paste0(round(fu / 30.4375, 1), " mo")
+        else "N/A"
+      }, error = function(e) "N/A")
       shinydashboard::valueBox(
         value    = val,
         subtitle = "Median follow-up",
@@ -109,33 +139,36 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
 
     output$box_age <- shinydashboard::renderValueBox({
       s   <- summary_rv()
-      val <- if (!is.null(s) && !is.na(s$median_age)) {
-        round(s$median_age, 1)
-      } else "N/A"
+      val <- tryCatch({
+        a <- s$median_age
+        if (!is.null(a) && !is.na(a) && is.finite(a)) round(a, 1) else "N/A"
+      }, error = function(e) "N/A")
       shinydashboard::valueBox(
         value    = val,
         subtitle = "Median age at index",
-        icon     = shiny::icon("person"),
+        icon     = shiny::icon("user"),
         color    = "orange"
       )
     })
 
     output$box_death <- shinydashboard::renderValueBox({
-      # Compute % with death from domain_data if available
       dd  <- domain_data()
       cm  <- cohort_members()
-      pct <- tryCatch({
-        death_df <- dd[["death"]]
-        if (!is.null(death_df) && nrow(death_df) > 0L) {
-          n_dead <- length(unique(
-            death_df$person_id[death_df$person_id %in% cm$subject_id]
-          ))
-          round(100 * n_dead / nrow(cm), 1)
+      val <- tryCatch({
+        if (is.null(dd) || is.null(cm) || nrow(cm) == 0L) {
+          "N/A"
         } else {
-          0
+          death_df <- dd[["death"]]
+          if (!is.null(death_df) && nrow(death_df) > 0L) {
+            n_dead <- length(unique(
+              death_df$person_id[death_df$person_id %in% cm$subject_id]
+            ))
+            paste0(round(100 * n_dead / nrow(cm), 1), "%")
+          } else {
+            "0%"
+          }
         }
-      }, error = function(e) NA_real_)
-      val <- if (!is.na(pct)) paste0(pct, "%") else "N/A"
+      }, error = function(e) "N/A")
       shinydashboard::valueBox(
         value    = val,
         subtitle = "% with death recorded",
