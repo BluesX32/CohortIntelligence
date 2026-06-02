@@ -1,0 +1,150 @@
+---
+title: "Interpreting Anomaly Scores, Temporal Flags, and Hypotheses"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Interpreting Anomaly Scores, Temporal Flags, and Hypotheses}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+## Core principle
+
+> All outputs from CohortIntelligence are **hypothesis-generating structured
+> observations** from OMOP CDM records. They are not clinical diagnoses,
+> causal claims, or validated findings.
+
+This vignette explains how to interpret the three most complex outputs:
+anomaly scores, temporal rule flags, and cluster-pair hypotheses.
+
+---
+
+## 1. Anomaly scores
+
+### What they measure
+
+Anomaly scores (0-1) come from an **isolation forest** — a tree-based algorithm
+that isolates patients whose feature combinations are rare relative to the
+cohort. A high score means the patient's pattern of conditions, drugs,
+procedures, and visits across time windows is difficult to describe with the
+same rules that work for most patients.
+
+### Score interpretation
+
+| Score | Interpretation | Suggested action |
+|---|---|---|
+| 0.0 - 0.4 | Typical — similar to cohort majority | Use as controls; calibrate your expectations |
+| 0.4 - 0.6 | Moderately unusual — borderline | Review in cluster context |
+| 0.6 - 1.0 | **Highly unusual** — top 5-10% | Prioritise for clinical review |
+
+### What high anomaly means clinically
+
+Possible causes of a high anomaly score:
+
+- **Genuine clinical complexity** — multimorbid patient with atypical
+  treatment history
+- **Rare disease subtype** — presentation that differs from the dominant cohort
+  pattern
+- **Data coding difference** — institution-specific coding practice that
+  differs from the majority
+- **Data quality issue** — duplicate records, impossible date sequences,
+  miscoded concepts
+- **Short observation period** — patient recently enrolled, most windows empty
+
+**None of these can be distinguished without chart review.** The anomaly score
+is a prioritisation signal, not a diagnosis.
+
+---
+
+## 2. Temporal rule flags
+
+### What they detect
+
+Temporal flags are rule-based triggers applied to each patient's structured
+OMOP record. They flag patterns that are worth reviewing — not patterns that
+are definitively wrong.
+
+### Current flags
+
+```{r flags}
+# Run temporal flags programmatically
+flags <- detect_temporal_flags(
+  cohort_members = cohort_members,
+  domain_data    = domain_data,
+  config         = temporal_flag_config(death_window_days = 90L)
+)
+```
+
+| Flag type | Trigger | Most common benign explanation |
+|---|---|---|
+| `no_post_index_followup` | Zero events after index | Patient transferred care or data lag |
+| `sparse_post_index` | Bottom 20% of cohort post-index events | Short follow-up or care elsewhere |
+| `death_shortly_after_index` | Death within 90 days post-index | Valid outcome; check censoring rules |
+| `drug_before_diagnosis_absent_after` | Drug pre-index, absent post | Treatment discontinuation |
+| `recurrent_condition` | Same concept 3+ times within 30 days | Re-coding, chronic condition management |
+| `isolated_index_code` | One condition code, no post-index support | Single administrative entry |
+| `concentrated_activity` | >70% of events in one window | Discrete clinical episode |
+
+### Language to use
+
+- Say: *"Potential temporal inconsistency — flag for review"*
+- Not: *"This is a data error"* or *"This patient should not be in the cohort"*
+
+---
+
+## 3. Cluster hypotheses
+
+### How they are generated
+
+The Hypothesis Panel compares feature prevalence between ML-defined cluster
+pairs using:
+
+- **Wilcoxon rank-sum test** for continuous features
+- **Fisher's exact test** for binary features
+- **BH correction** for multiple comparisons
+
+### Critical limitation: circularity
+
+Hypotheses are tested on the **same data used to define the clusters**. This
+creates circularity — you will almost always find statistical differences
+between clusters that were constructed to be different. These p-values are
+**not** independent pre-specified statistical tests.
+
+### How to use results
+
+```{r hypotheses}
+hypotheses <- generate_hypotheses(
+  feature_matrix  = feature_matrix,
+  ml_results      = ml_results,
+  min_effect_size = 0.1,
+  max_hypotheses  = 20L
+)
+# Sort by effect_size (largest difference) rather than p-value alone
+hypotheses[order(-hypotheses$effect_size), ]
+```
+
+Use the hypothesis table to:
+
+1. Identify concepts with large effect sizes (> 0.3) for clinical discussion
+2. Ask a clinician: *"Does this difference between groups make clinical sense?"*
+3. Design a formal pre-specified analysis in an independent dataset
+
+### Required validation steps before reporting
+
+1. Replicate in an independent cohort or time period
+2. Use CohortDiagnostics to formally validate the phenotype
+3. Pre-register the hypothesis before analysing the validation dataset
+
+---
+
+## 4. Summary: cautious language guide
+
+| Output | What to say | What NOT to say |
+|---|---|---|
+| Anomaly score 0.85 | "Potential outlier — possible clinical complexity or data pattern" | "This patient is an error" |
+| Cluster label "Medication-dense group" | "This group may reflect intensive treatment — requires review" | "This cluster is disease subtype X" |
+| Temporal flag | "Potential temporal pattern of interest — review source records" | "This is a data quality failure" |
+| Hypothesis | "Potential signal — hypothesis-generating, requires validation" | "We found that cluster A has more Y than B" |

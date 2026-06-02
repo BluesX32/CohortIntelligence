@@ -122,7 +122,7 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
     }
 
     # rank_patients() accepts NULL ml_results (falls back to sparsity-only).
-    # Always compute so Patient Selector and priority sorting always work.
+    # Always compute (even without ML) so Review Queue and quilt sorting work.
     rank_df <- tryCatch(
       rank_patients(ml_res, domain_act, cohort_members),
       error = function(e) {

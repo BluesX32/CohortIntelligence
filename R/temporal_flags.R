@@ -67,19 +67,21 @@ detect_temporal_flags <- function(cohort_members,
         visit       = "visit_start_date"
       )
       if (is.null(df) || nrow(df) == 0L || !date_col %in% names(df)) {
-        return(tibble::tibble())
+        return(tibble::tibble(subject_id = integer(0)))
       }
       df |>
         dplyr::rename(subject_id = person_id) |>
         dplyr::inner_join(idx, by = "subject_id") |>
         dplyr::filter(.data[[date_col]] > cohort_start_date) |>
-        dplyr::distinct(subject_id) |>
+        dplyr::select(subject_id) |>
+        dplyr::distinct() |>
         dplyr::mutate(has_post = TRUE)
     }
   ) |>
-    dplyr::distinct(subject_id)
+    dplyr::distinct()
 
-  no_post_ids <- setdiff(cohort_members$subject_id, post_events$subject_id)
+  no_post_ids <- setdiff(cohort_members$subject_id,
+                          post_events$subject_id %||% integer(0))
   if (length(no_post_ids) > 0L) {
     flags[["no_post_followup"]] <- purrr::map_dfr(no_post_ids, function(pid) {
       .flag(pid, "no_post_index_followup",
@@ -104,7 +106,9 @@ detect_temporal_flags <- function(cohort_members,
           condition="condition_start_date", drug="drug_exposure_start_date",
           procedure="procedure_date", measurement="measurement_date",
           observation="observation_date", visit="visit_start_date")
-        if (is.null(df) || nrow(df) == 0L || !date_col %in% names(df)) return(tibble::tibble())
+        if (is.null(df) || nrow(df) == 0L || !date_col %in% names(df)) {
+          return(tibble::tibble(subject_id = integer(0), n_post = integer(0)))
+        }
         df |>
           dplyr::rename(subject_id = person_id) |>
           dplyr::inner_join(idx, by = "subject_id") |>

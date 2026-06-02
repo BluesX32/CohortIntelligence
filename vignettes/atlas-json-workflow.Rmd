@@ -1,0 +1,123 @@
+---
+title: "ATLAS JSON Cohort Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{ATLAS JSON Cohort Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+## Overview
+
+CohortIntelligence accepts cohort definitions as ATLAS JSON files. The package
+uses `CirceR` to compile the JSON into a single read-only SQL CTE query —
+no write permissions, no temp tables, no pre-existing cohort table required.
+
+## 1. Diagnose before launching
+
+```{r diagnose}
+library(CohortIntelligence)
+
+connection_details <- DatabaseConnector::createConnectionDetails(
+  dbms     = "spark",
+  server   = "your-host/default",
+  user     = "token",
+  password = "your-pat",
+  port     = 443,
+  pathToDriver = "/path/to/jdbc/"
+)
+connection <- DatabaseConnector::connect(connection_details)
+
+connector <- create_cohort_connector(
+  connection   = connection,
+  cdm_schema   = "your_cdm_schema",
+  vocab_schema = "your_vocab_schema"
+)
+
+# Check concept coverage and candidate patient count (read-only)
+json_path <- system.file("template", "T2DM.json",
+                          package = "CohortIntelligence")
+check_cohort_json(connector, json_path)
+# Output:
+#   JSON OK. Concept IDs: 443732, 201826, 4193704, 1503297
+#   Vocabulary: 4 / 4 concept(s) found in CDM.
+#   546 patients with >= 1 qualifying condition (pre-rules).
+#   If fetch_cohort_from_json() returns 0, run with verbose = TRUE.
+```
+
+## 2. Understand the T2DM template criteria
+
+The bundled `T2DM.json` requires ALL of:
+
+1. T2DM condition code (SNOMED 443732 / 201826 / 4193704 + all descendants)
+2. Age >= 18 at index date
+3. **365 days of continuous prior observation** before the index date
+4. **Metformin prescription within 0-365 days AFTER** the index date
+
+The 365-day prior observation window is the most common reason the cohort
+returns 0 patients in specialty-care CDMs.
+
+## 3. Debug a 0-patient result
+
+```{r debug}
+# Inspect the generated SQL
+fetch_cohort_from_json(connector, json_path, verbose = TRUE)
+# Prints the full CTE SELECT to the console
+
+# The CirceR SQL structure:
+#   WITH vwXXXCodesets AS (...)       -- concept expansion
+#   , vwXXXqualified_events AS (...)  -- primary events (age + obs window)
+#   , vwXXXInclusion_0 AS (...)       -- metformin inclusion rule
+#   ...
+#   , vwXXXfinal_cohort AS (...)      -- ERA-collapsed final cohort
+#   SELECT ... FROM vwXXXfinal_cohort
+```
+
+## 4. Launch with the JSON
+
+```{r launch}
+launch_cohort_intelligence(
+  connection   = connection,
+  cdm_schema   = "your_cdm_schema",
+  vocab_schema = "your_vocab_schema",
+  json_path    = json_path
+)
+
+# Cohort loads automatically -- no button click needed.
+# Disconnect when done:
+DatabaseConnector::disconnect(connection)
+```
+
+## 5. Use your own ATLAS export
+
+Export any cohort from ATLAS: **Export > JSON**.
+
+```{r custom}
+launch_cohort_intelligence(
+  connection   = connection,
+  cdm_schema   = "schema",
+  vocab_schema = "schema",
+  json_path    = "path/to/my_cohort.json"
+)
+```
+
+Any valid ATLAS JSON for OMOP CDM >= 5.0 works. The CTE approach handles
+concept ancestor expansion (`includeDescendants = TRUE`) correctly via the
+`#Codesets` setup section.
+
+## 6. Supported databases
+
+| DBMS | `dbms` value | Notes |
+|---|---|---|
+| Databricks / Spark | `"spark"` | Tested |
+| PostgreSQL | `"postgresql"` | Standard |
+| SQL Server | `"sql server"` | Standard |
+| Amazon Redshift | `"redshift"` | Standard |
+| Google BigQuery | `"bigquery"` | Standard |
+| Snowflake | `"snowflake"` | Standard |
+
+JDBC drivers: `DatabaseConnector::downloadJdbcDrivers("spark", pathToDriver="/")`

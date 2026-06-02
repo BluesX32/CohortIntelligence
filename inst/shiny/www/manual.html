@@ -225,7 +225,7 @@ kbd {
     <li class="sub"><a href="#quilt-patterns">Interpreting patterns</a></li>
     <li class="sub"><a href="#quilt-controls">Controls</a></li>
     <li><a href="#anomaly">Anomaly Explorer</a></li>
-    <li><a href="#selector">Patient Selector</a></li>
+    <li><a href="#selector">Review Queue</a></li>
     <li><a href="#trajectory">Trajectory Viewer</a></li>
     <li><a href="#hypothesis">Hypothesis Panel</a></li>
     <li><a href="#demographics">Demographics</a></li>
@@ -647,9 +647,9 @@ to describe with the same rules that work for most of the cohort.</p>
 </table>
 
 <!-- ══════════════════ SELECTOR ══════════════════ -->
-<h2 id="selector">8. Patient Selector</h2>
+<h2 id="selector">8. Review Queue</h2>
 
-<p>The Patient Selector is a priority-ranked review queue. It answers:
+<p>The Review Queue is a priority-ranked review queue. It answers:
 <em>"If I can only review N patients, which ones should I look at first?"</em></p>
 
 <h3>Priority score</h3>
@@ -916,7 +916,7 @@ pass the path to <code>launch_cohort_intelligence(json_path = ...)</code>.</p>
     <div class="step-num">5</div>
     <div class="step-body">
       <h4>Review 3–5 high-priority trajectories</h4>
-      <p>From the Patient Selector, click the top high-priority patients.
+      <p>From the Review Queue, click the top high-priority patients.
       Do their trajectories look like genuine clinical outliers or like
       data-quality issues (impossible chronology, all events on one day)?</p>
     </div>
@@ -1046,7 +1046,7 @@ Try lowering <code>Min effect size</code> to 0.1 or re-running with
 <ul>
   <li>Hypothesis Panel → Download CSV</li>
   <li>Quilt → Download PNG or SVG</li>
-  <li>Patient Selector → export the DT table (copy-paste or print)</li>
+  <li>Review Queue → export the DT table (copy-paste or print)</li>
   <li>In R: <code>export_cohort_results(results, path = "output/")</code></li>
 </ul>
 

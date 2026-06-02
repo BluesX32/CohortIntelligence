@@ -1,0 +1,93 @@
+---
+title: "CohortIntelligence — Quick Start"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{CohortIntelligence -- Quick Start}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+## Overview
+
+CohortIntelligence is an OHDSI-native cohort exploration workbench for OMOP
+CDM studies. This vignette walks through launching the dashboard in demo mode,
+understanding the five-tab workflow, and running the core functions
+programmatically.
+
+## 1. Launch in demo mode
+
+No database or credentials are required for demo mode:
+
+```{r demo}
+library(CohortIntelligence)
+launch_cohort_intelligence()
+```
+
+The browser opens automatically with 50 synthetic patients loaded across all
+seven OMOP domains. All five dashboard tabs are fully functional.
+
+## 2. The five-tab workflow
+
+| Tab | Question answered |
+|---|---|
+| Cohort Overview | What does my cohort look like at a glance? |
+| Cluster & Anomaly | What subgroups exist, and who is unusual? |
+| Review Queue | Which patients should I inspect first? |
+| Trajectory Review | What is this patient's clinical history? |
+| Hypothesis & Report | What findings can I bring to a clinician meeting? |
+
+## 3. Run the pipeline programmatically
+
+```{r pipeline}
+library(CohortIntelligence)
+
+# Use the built-in synthetic data
+connector <- CohortIntelligence:::.cohort_intel_env  # demo only
+# For real use, see the atlas-json-workflow vignette
+
+# ── Step 1: create an in-memory connector from synthetic data
+# (In production you would use create_cohort_connector())
+```
+
+## 4. Understand the output columns
+
+```{r rank}
+# After loading, rank_df has these key columns:
+# subject_id    -- patient identifier
+# rank_position -- 1 = highest priority for review
+# priority_tier -- "high", "medium", "low"
+# anomaly_score -- 0 (typical) to 1 (unusual); 0 if isotree not installed
+# sparsity_score -- 0 (complete data) to 1 (all windows empty)
+# cluster_id    -- ML cluster; -1/0 = unassigned (noise)
+```
+
+## 5. Signal explanation
+
+```{r explain}
+# Explain why a specific patient was prioritised
+explanation <- explain_patient_priority(
+  subject_id      = 1L,
+  rank_df         = rank_df,
+  feature_matrix  = feature_matrix,
+  domain_activity = domain_activity,
+  cohort_members  = cohort_members
+)
+
+# Each row is one explanation card
+print(explanation[, c("explanation_label", "severity", "domain")])
+```
+
+## 6. Cautious language
+
+All outputs are hypothesis-generating. Always use:
+
+- "potential signal" (not "finding")
+- "possible interpretation" (not "diagnosis")
+- "requires clinical validation" (not "confirmed")
+- "review priority" (not "clinical risk")
+
+See `vignette("interpreting-results")` for a full guide.

@@ -1,0 +1,163 @@
+---
+title: "Exporting a Clinician Review Packet"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Exporting a Clinician Review Packet}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+## Overview
+
+The clinician review packet is a self-contained HTML report designed for
+multidisciplinary meetings between data scientists, clinicians, and
+epidemiologists. It contains:
+
+1. Disclaimer (hypothesis-generating, not clinical validation)
+2. Cohort overview (n patients, demographics summary, data density)
+3. Cluster profile summary (one paragraph per cluster, cautious labels)
+4. Review sets summary (patient counts per group)
+5. Temporal flags summary (flag type × severity × count)
+6. Candidate hypotheses (top 10, sortable by effect size)
+7. Recommended next steps and limitations
+
+No rmarkdown, pandoc, or LaTeX required — the report is built with
+`htmltools` only.
+
+---
+
+## 1. Via the dashboard (recommended)
+
+In the **Hypothesis & Report** tab, click **Configure & Export**, choose
+which sections to include and how many patients, then click **Export HTML**.
+
+---
+
+## 2. Programmatically
+
+```{r export}
+library(CohortIntelligence)
+
+# Assuming you have already run the pipeline:
+# connector, cohort_members, domain_data, person_data,
+# feature_matrix, ml_results, rank_df, quilt_base available
+
+temporal_flags <- detect_temporal_flags(
+  cohort_members = cohort_members,
+  domain_data    = domain_data
+)
+
+review_sets <- build_review_sets(
+  rank_df         = rank_df,
+  domain_activity = domain_activity,
+  feature_matrix  = feature_matrix,
+  ml_results      = ml_results,
+  cohort_members  = cohort_members,
+  temporal_flags  = temporal_flags
+)
+
+hypotheses <- generate_hypotheses(
+  feature_matrix  = feature_matrix,
+  ml_results      = ml_results,
+  min_effect_size = 0.1,
+  max_hypotheses  = 20L
+)
+
+export_clinician_review_packet(
+  results = list(
+    cohort_members   = cohort_members,
+    rank_df          = rank_df,
+    domain_data      = domain_data,
+    person_data      = person_data,
+    ml_results       = ml_results,
+    hypotheses       = hypotheses,
+    quilt_base       = quilt_base,
+    temporal_flags   = temporal_flags,
+    review_sets      = review_sets,
+    cluster_profiles = NULL      # computed internally if NULL
+  ),
+  path        = "cohort_review_2024.html",
+  cohort_name = "T2DM Metformin Cohort",
+  n_patients  = 10L,
+  include     = list(
+    typical        = TRUE,
+    outliers       = TRUE,
+    sparse         = TRUE,
+    temporal_flags = TRUE,
+    hypotheses     = TRUE
+  )
+)
+```
+
+---
+
+## 3. Report tone and disclaimers
+
+Every report includes the following disclaimer (not removable):
+
+> *"This report is hypothesis-generating and based on structured OMOP CDM
+> evidence only. It does NOT replace formal chart review, clinical adjudication,
+> or causal inference analysis. All findings are preliminary and require
+> clinical validation before use in research or patient care."*
+
+When presenting the report:
+
+- Open with the **Limitations** section to set expectations
+- Use cluster labels as conversation starters, not conclusions
+- For each temporal flag, ask: *"Could this reflect a data capture issue
+  rather than a clinical event?"*
+- For each hypothesis, ask: *"Does this difference make clinical sense?
+  Would you expect it from first principles?"*
+
+---
+
+## 4. CSV side-exports
+
+```{r csv}
+# Export tabular data alongside the HTML report
+export_cohort_results(
+  results = list(
+    rank    = rank_df,
+    hypotheses = hypotheses
+  ),
+  path     = "review_exports/",
+  formats  = c("csv","rds"),
+  overwrite = TRUE
+)
+# Writes:
+#   patient_rankings.csv
+#   hypotheses.csv
+#   (+ .rds versions)
+```
+
+---
+
+## 5. Building the packet data structure separately
+
+```{r packet}
+# Build the packet in memory first (useful for inspection)
+packet <- build_clinician_review_packet(
+  cohort_summary    = build_cohort_summary(cohort_members, person_data),
+  cluster_profiles  = build_cluster_profiles(rank_df, domain_data,
+                                              cohort_members, person_data),
+  review_sets       = review_sets,
+  temporal_flags    = temporal_flags,
+  hypotheses        = hypotheses,
+  selected_patients = rank_df$subject_id[rank_df$priority_tier == "high"][1:5],
+  patient_timelines = list()
+)
+
+# Inspect
+str(packet, max.level = 1)
+
+# Render
+export_clinician_review_packet(
+  results     = packet,
+  path        = "my_report.html",
+  cohort_name = "My Cohort"
+)
+```

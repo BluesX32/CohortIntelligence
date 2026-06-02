@@ -2,19 +2,32 @@ Package: CohortIntelligence
 Title: OHDSI-Native Cohort Exploration and Hypothesis Generation
 Version: 0.1.0
 Authors@R:
-    person("First", "Last", , "author@example.com", role = c("aut", "cre"))
-Description: Interactive cohort exploration workbench for OMOP CDM studies.
-    Loads person-level OMOP domains (conditions, drugs, procedures,
-    measurements, visits, observations, death), engineers patient-level feature
-    matrices across time windows relative to cohort index dates, runs
-    unsupervised machine learning (UMAP via 'uwot', k-means clustering via
-    'cluster', isolation forest via 'isotree') to detect subgroups and
-    out-of-distribution patients, ranks patients by review priority, and
-    presents a Shiny dashboard with a reactive quilt plot (cohort-wide
-    bird's-eye heatmap), trajectory viewer, anomaly explorer, hypothesis
-    generation panel, and demographics tab. Designed for OHDSI studies using
-    OMOP CDM v5.3/5.4. ML features require 'uwot', 'cluster', and 'isotree'
-    (all on CRAN): install.packages(c('uwot', 'cluster', 'isotree')).
+    person("Minqi", "Xiong",
+           email = "mxiong5@jhu.edu",
+           role  = c("aut", "cre"),
+           comment = c(ORCID = ""))
+Description: An OHDSI-native cohort exploration and hypothesis-generation
+    workbench for OMOP CDM studies. Designed to fill the gap between
+    aggregate cohort diagnostics (CohortDiagnostics, ATLAS) and formal
+    chart review. Accepts cohorts defined by ATLAS JSON files (via CirceR)
+    or pre-instantiated cohort tables. Key capabilities include: (1) reactive
+    quilt plot -- a patient x domain x time-window heatmap giving a bird's-eye
+    view of the cohort; (2) unsupervised ML pipeline -- UMAP dimensionality
+    reduction ('uwot'), k-means/hierarchical clustering ('cluster'), and
+    isolation-forest anomaly scoring ('isotree') to detect subgroups and
+    out-of-distribution patients; (3) signal explanation -- per-patient
+    priority explanation cards with severity-tagged findings; (4) cluster
+    profile summaries -- cautious descriptive labels, prevalence comparisons,
+    and narrative summaries per cluster; (5) review sets -- eight guided
+    patient groups to structure chart review workflows; (6) temporal rule
+    flags -- rule-based detection of structured-data patterns that warrant
+    clinical review; (7) clinician meeting report export -- self-contained
+    HTML packet covering cohort landscape, cluster profiles, review sets,
+    temporal flags, and candidate hypotheses. All outputs are
+    hypothesis-generating and require clinical validation; this tool does
+    NOT replace CohortDiagnostics, ATLAS, or formal chart review. Designed
+    for OMOP CDM v5.3/5.4. ML packages required:
+    install.packages(c('uwot', 'cluster', 'isotree')).
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -40,7 +53,6 @@ Suggests:
     ggplot2 (>= 3.5.0),
     DT (>= 0.33),
     uwot (>= 0.1.14),
-    umap (>= 0.2.10),
     cluster (>= 2.1.6),
     isotree (>= 0.6.0),
     dbscan,
