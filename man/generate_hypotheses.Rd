@@ -8,7 +8,8 @@ generate_hypotheses(
   feature_matrix,
   ml_results,
   min_effect_size = 0.3,
-  max_hypotheses = 20L
+  max_hypotheses = 20L,
+  include_unmapped = FALSE
 )
 }
 \arguments{
@@ -20,11 +21,15 @@ generate_hypotheses(
 correlation for continuous, Cramer's V for binary) to retain.}
 
 \item{max_hypotheses}{Integer. Maximum number of hypotheses to return.}
+
+\item{include_unmapped}{Logical. If \code{FALSE} (default), concepts named
+\code{"No matching concept"}, \code{"Unmapped concept"}, or similar are excluded
+from the ranked output so they do not dominate the hypothesis list.}
 }
 \value{
 tibble(hypothesis_id, cluster_a, cluster_b, domain, concept_name,
-window_label, effect_size, p_value_raw, p_value_adjusted, direction,
-description_text)
+window_label, effect_size, p_value_raw, exploratory_p_adjusted,
+direction, description_text)
 }
 \description{
 For each pair of clusters, tests whether each feature in the long feature

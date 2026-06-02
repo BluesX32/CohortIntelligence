@@ -32,7 +32,9 @@ utils::globalVariables(c(
   # explain.R
   "explanation_type", "explanation_label", "explanation_detail",
   "importance_score", "severity", "z_score", "ratio",
-  "med_count", "sd_count", "win_total",
+  "med_count", "sd_count", "win_total", "pct_top",
+  # hypotheses.R
+  "exploratory_p_adjusted",
   # review_sets.R
   "review_set", "reason_for_selection", "set_priority",
   "total_events", "post_index_events", "pre_index_events",

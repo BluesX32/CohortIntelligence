@@ -469,7 +469,9 @@ function(input, output, session) {
     "trajectory",
     selected_patient = rv$selected_patient,
     domain_data      = shiny::reactive(rv$domain_data()),
-    cohort_members   = shiny::reactive(rv$cohort_members())
+    cohort_members   = shiny::reactive(rv$cohort_members()),
+    rank_df          = shiny::reactive(rv$rank_df()),
+    temporal_flags   = shiny::reactive(rv$temporal_flags())
   )
   signal_explanationServer(
     "signal_explanation_traj",
@@ -565,6 +567,72 @@ function(input, output, session) {
       })
     }
   )
+
+  # ── Cohort Overview summary cards ────────────────────────────────────────
+  output$overview_summary_cards <- shiny::renderUI({
+    cm  <- rv$cohort_members()
+    rd  <- rv$rank_df()
+    tf  <- rv$temporal_flags()
+    qb  <- rv$quilt_base()
+
+    if (is.null(cm)) return(NULL)
+
+    n_pat      <- nrow(cm)
+    n_clusters <- if (!is.null(rd))
+      length(setdiff(unique(rd$cluster_id), c(0L, -1L))) else NA_integer_
+    n_hi_flags <- if (!is.null(tf))
+      sum(tf$severity == "high", na.rm = TRUE) else NA_integer_
+    n_multi_flags <- if (!is.null(tf))
+      sum(table(tf$subject_id) >= 2L) else NA_integer_
+    top_domain <- if (!is.null(qb) && nrow(qb) > 0L) {
+      dplyr::count(qb, domain, wt = event_count, sort = TRUE)$domain[[1L]]
+    } else NA_character_
+
+    .vcard <- function(val, label, icon_name, color) {
+      shiny::column(2,
+        shiny::div(
+          style = paste0(
+            "background:#fff; border:1px solid #e2e8f0; border-top:3px solid ",
+            color, "; border-radius:6px; padding:10px 14px;",
+            "margin-bottom:12px; text-align:center;"
+          ),
+          shiny::tags$div(
+            style = paste0("font-size:1.6em; font-weight:800; color:", color, ";"),
+            as.character(val %||% "—")
+          ),
+          shiny::tags$div(
+            style = "font-size:0.76em; color:#64748b; margin-top:2px;",
+            shiny::icon(icon_name), " ", label
+          )
+        )
+      )
+    }
+
+    shiny::fluidRow(
+      .vcard(format(n_pat, big.mark = ","), "Patients loaded",
+             "users", "#2563eb"),
+      .vcard(if (!is.na(n_clusters)) n_clusters else "—",
+             "Clusters detected", "layer-group", "#7c3aed"),
+      .vcard(if (!is.na(n_hi_flags)) n_hi_flags else "—",
+             "High-severity flags", "flag", "#d97706"),
+      .vcard(if (!is.na(n_multi_flags)) n_multi_flags else "—",
+             "Patients with ≥2 flags", "person-circle-exclamation", "#9f1239"),
+      .vcard(if (!is.na(top_domain)) top_domain else "—",
+             "Most active domain", "chart-bar", "#0891b2"),
+      shiny::column(2,
+        shiny::div(
+          style = paste0(
+            "background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px;",
+            "padding:10px 14px; margin-bottom:12px; font-size:0.78em;",
+            "color:#166534;"
+          ),
+          shiny::icon("circle-info"), " ",
+          "Counts reflect structured OMOP evidence. Flags are review triggers, ",
+          "not clinical conclusions."
+        )
+      )
+    )
+  })
 
   # ── Sidebar exports (shown after cohort loads) ────────────────────────────
   output$sidebar_exports <- shiny::renderUI({

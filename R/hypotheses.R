@@ -14,15 +14,19 @@
 #' @param min_effect_size Numeric. Minimum absolute effect size (rank-biserial
 #'   correlation for continuous, Cramer's V for binary) to retain.
 #' @param max_hypotheses Integer. Maximum number of hypotheses to return.
+#' @param include_unmapped Logical. If `FALSE` (default), concepts named
+#'   `"No matching concept"`, `"Unmapped concept"`, or similar are excluded
+#'   from the ranked output so they do not dominate the hypothesis list.
 #'
 #' @return tibble(hypothesis_id, cluster_a, cluster_b, domain, concept_name,
-#'   window_label, effect_size, p_value_raw, p_value_adjusted, direction,
-#'   description_text)
+#'   window_label, effect_size, p_value_raw, exploratory_p_adjusted,
+#'   direction, description_text)
 #' @export
 generate_hypotheses <- function(feature_matrix,
                                  ml_results,
-                                 min_effect_size = 0.3,
-                                 max_hypotheses  = 20L) {
+                                 min_effect_size  = 0.3,
+                                 max_hypotheses   = 20L,
+                                 include_unmapped = FALSE) {
   long     <- feature_matrix$long
   clusters <- if (is.data.frame(ml_results)) ml_results else ml_results$clusters
 
@@ -91,24 +95,37 @@ generate_hypotheses <- function(feature_matrix,
 
   if (nrow(results) == 0L) return(.empty_hypotheses())
 
-  results$p_value_adjusted <- stats::p.adjust(results$p_value_raw, method = "BH")
+  # Rename to emphasise exploratory nature
+  results$exploratory_p_adjusted <- stats::p.adjust(results$p_value_raw,
+                                                      method = "BH")
+
+  # Filter unmapped concepts by default (they pollute top hypotheses)
+  if (!include_unmapped) {
+    unmapped_pattern <- "^(No matching concept|Unmapped concept|unknown|NA)$"
+    results <- results[
+      !grepl(unmapped_pattern, results$concept_name, ignore.case = TRUE),
+      , drop = FALSE
+    ]
+  }
 
   results <- results[results$effect_size >= min_effect_size, , drop = FALSE]
-  results <- results[order(results$p_value_adjusted), , drop = FALSE]
+  results <- results[order(results$exploratory_p_adjusted), , drop = FALSE]
   results <- utils::head(results, max_hypotheses)
+
+  if (nrow(results) == 0L) return(.empty_hypotheses())
 
   results <- dplyr::mutate(results,
     hypothesis_id    = seq_len(dplyr::n()),
     description_text = sprintf(
-      "Cluster %s vs Cluster %s: %s (%s, %s) -- effect size = %.2f, adj. p = %.3g",
+      "Cluster %s vs Cluster %s: %s (%s, %s) -- effect size = %.2f, exploratory adj. p = %.3g",
       cluster_a, cluster_b, concept_name, domain, window_label,
-      effect_size, p_value_adjusted
+      effect_size, exploratory_p_adjusted
     )
   )
 
   dplyr::select(results,
     hypothesis_id, cluster_a, cluster_b, domain, concept_name, window_label,
-    effect_size, p_value_raw, p_value_adjusted, direction, description_text
+    effect_size, p_value_raw, exploratory_p_adjusted, direction, description_text
   )
 }
 
@@ -139,17 +156,17 @@ format_hypotheses_report <- function(hypotheses_df,
 
 .empty_hypotheses <- function() {
   tibble::tibble(
-    hypothesis_id    = integer(0),
-    cluster_a        = integer(0),
-    cluster_b        = integer(0),
-    domain           = character(0),
-    concept_name     = character(0),
-    window_label     = character(0),
-    effect_size      = numeric(0),
-    p_value_raw      = numeric(0),
-    p_value_adjusted = numeric(0),
-    direction        = character(0),
-    description_text = character(0)
+    hypothesis_id          = integer(0),
+    cluster_a              = integer(0),
+    cluster_b              = integer(0),
+    domain                 = character(0),
+    concept_name           = character(0),
+    window_label           = character(0),
+    effect_size            = numeric(0),
+    p_value_raw            = numeric(0),
+    exploratory_p_adjusted = numeric(0),
+    direction              = character(0),
+    description_text       = character(0)
   )
 }
 

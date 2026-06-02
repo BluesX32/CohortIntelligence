@@ -85,14 +85,19 @@ detect_temporal_flags <- function(cohort_members,
   if (length(no_post_ids) > 0L) {
     flags[["no_post_followup"]] <- purrr::map_dfr(no_post_ids, function(pid) {
       .flag(pid, "no_post_index_followup",
-            "No post-index follow-up data",
+            "No observed post-index follow-up (data completeness concern)",
             paste0("No clinical events found after the cohort index date in any ",
-                   "OMOP domain. This may indicate the patient left the observed ",
-                   "system, data is not yet available, or follow-up was brief."),
-            severity         = "high",
+                   "OMOP domain. Possible explanations: the patient left the ",
+                   "observed system, care was received outside this data source, ",
+                   "index date falls near the end of available data, or there is ",
+                   "a data feed lag. This is a data completeness flag, not a ",
+                   "clinical error."),
+            severity         = "medium",
             domain           = "all",
             evidence_summary = "Zero post-index events across all available domains.",
-            recommended_action = "Verify cohort membership and data source coverage.")
+            recommended_action = paste0(
+              "Review observation period end date, data source coverage, and ",
+              "whether index date occurs near the end of available data."))
     })
   }
 

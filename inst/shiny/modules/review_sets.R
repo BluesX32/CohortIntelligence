@@ -2,22 +2,38 @@
 # Guided patient review queue -- eight clinically-motivated patient groups.
 
 .SET_DEFS <- list(
-  list(name="Typical patients",       icon="users",            color="#16a34a",
-       why="Use as calibration reference -- low anomaly, adequate data coverage."),
-  list(name="Most anomalous",         icon="triangle-exclamation", color="#dc2626",
-       why="Statistically unusual clinical patterns -- possible rare subtypes or data issues."),
-  list(name="Sparse follow-up",       icon="calendar-xmark",  color="#d97706",
-       why="Limited post-index data -- may reflect incomplete follow-up or care transfer."),
-  list(name="Rare cluster",           icon="microscope",       color="#7c3aed",
-       why="Small or unassigned cluster -- possible rare phenotype, warrants review."),
-  list(name="High post-index activity", icon="arrow-trend-up", color="#0284c7",
-       why="High event volume after index date -- possible intensive management."),
-  list(name="High pre-index activity", icon="clock-rotate-left", color="#0284c7",
-       why="Complex prior history before index -- may affect cohort entry validity."),
-  list(name="Boundary patients",      icon="code-merge",       color="#64748b",
-       why="Moderate anomaly, not clearly in one cluster -- borderline classification."),
-  list(name="Temporal concern",       icon="flag",             color="#dc2626",
-       why="High-severity temporal rule flag -- structured-data pattern requires review.")
+  list(name="Typical patients",
+       icon="users", color="#16a34a",
+       why="Calibration reference.",
+       action="Start here. Review to calibrate expectations for a plausible cohort member before inspecting unusual cases."),
+  list(name="Most anomalous",
+       icon="triangle-exclamation", color="#dc2626",
+       why="High relative anomaly score.",
+       action="Review for unusual structured-data patterns, possible data artefacts, or atypical clinical trajectories requiring follow-up."),
+  list(name="Sparse follow-up",
+       icon="calendar-xmark", color="#d97706",
+       why="Limited post-index data.",
+       action="Assess whether missingness or care received outside the observed system may limit how far downstream analyses can reach."),
+  list(name="Rare cluster",
+       icon="microscope", color="#7c3aed",
+       why="Small or unassigned cluster.",
+       action="Inspect small clusters or unassigned patients that may reflect uncommon patterns or unstable grouping."),
+  list(name="High post-index activity",
+       icon="arrow-trend-up", color="#0284c7",
+       why="Dense post-index events.",
+       action="Review whether post-index activity reflects treatment intensity, complications, or documentation density."),
+  list(name="High pre-index activity",
+       icon="clock-rotate-left", color="#0284c7",
+       why="Complex prior history.",
+       action="Review whether a complex pre-index history affects cohort entry interpretation."),
+  list(name="Boundary patients",
+       icon="code-merge", color="#64748b",
+       why="Moderate anomaly / ambiguous cluster.",
+       action="Inspect patients with borderline anomaly or uncertain cluster assignment before drawing subgroup conclusions."),
+  list(name="Temporal concern",
+       icon="flag", color="#b45309",
+       why="Temporal data-completeness flag.",
+       action="Review temporal flags before interpreting the clinical trajectory. Flags are review triggers, not errors.")
 )
 
 #' Review sets module UI
@@ -100,8 +116,12 @@ review_setsServer <- function(id, review_sets_rv, selected_patient) {
               )
             ),
             shiny::tags$p(
-              style = "font-size:0.78em; color:#64748b; margin:4px 0 0;",
+              style = "font-size:0.76em; color:#334155; font-weight:600; margin:4px 0 2px;",
               def$why
+            ),
+            shiny::tags$p(
+              style = "font-size:0.74em; color:#64748b; margin:0;",
+              def$action %||% ""
             )
           )
         )

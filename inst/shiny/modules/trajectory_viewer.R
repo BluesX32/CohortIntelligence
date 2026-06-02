@@ -62,9 +62,15 @@ trajectory_viewerUI <- function(id) {
 #' @param selected_patient `reactiveVal(NULL)`.
 #' @param domain_data `reactive` returning named list of domain tibbles.
 #' @param cohort_members `reactive` returning cohort member tibble.
+#' @param rank_df `reactive` tibble from [rank_patients()]. Optional — used
+#'   for the Review Context card.
+#' @param temporal_flags `reactive` tibble from [detect_temporal_flags()].
+#'   Optional — shown in Review Context card.
 #' @export
 trajectory_viewerServer <- function(id, selected_patient,
-                                     domain_data, cohort_members) {
+                                     domain_data, cohort_members,
+                                     rank_df        = shiny::reactive(NULL),
+                                     temporal_flags = shiny::reactive(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
 
     output$patient_badge <- shiny::renderUI({
@@ -72,15 +78,66 @@ trajectory_viewerServer <- function(id, selected_patient,
       if (is.null(pid)) {
         return(shiny::p(
           shiny::icon("arrow-pointer"),
-          " Select a patient",
+          " Select a patient to inspect their structured evidence timeline.",
           style = "color:#94a3b8; margin-top:26px; font-size:0.86em;"
         ))
       }
+
+      # ── Review context card ──────────────────────────────────────────────
+      rd  <- rank_df()
+      tf  <- temporal_flags()
+
+      pat_row   <- if (!is.null(rd)) rd[rd$subject_id == pid, , drop = FALSE] else NULL
+      pat_flags <- if (!is.null(tf)) tf[tf$subject_id == pid, , drop = FALSE] else NULL
+
+      tier      <- if (!is.null(pat_row) && nrow(pat_row) > 0L) pat_row$priority_tier[[1L]] else NULL
+      anom      <- if (!is.null(pat_row) && nrow(pat_row) > 0L) round(pat_row$anomaly_score[[1L]], 2) else NULL
+      n_flags   <- if (!is.null(pat_flags)) nrow(pat_flags) else 0L
+      hi_flags  <- if (!is.null(pat_flags) && nrow(pat_flags) > 0L)
+        sum(pat_flags$severity == "high") else 0L
+
+      tier_color <- switch(tier %||% "unranked",
+        high     = "#dc2626",
+        medium   = "#d97706",
+        low      = "#16a34a",
+        "#64748b"
+      )
+
       shiny::div(
-        class = "alert alert-info",
-        style = paste0("margin-top:18px; padding:5px 10px;",
-                       "font-size:0.88em; text-align:center;"),
-        shiny::tags$b("Patient: "), as.character(pid)
+        style = paste0(
+          "background:#f8fafc; border:1px solid #e2e8f0;",
+          "border-left:4px solid #2563eb;",
+          "border-radius:6px; padding:10px 14px; margin-bottom:8px;"
+        ),
+        shiny::div(
+          style = "display:flex; justify-content:space-between; align-items:center;",
+          shiny::tags$b(style = "color:#0f3460; font-size:0.9em;",
+                         shiny::icon("stethoscope"), " Review Context"),
+          shiny::tags$span(
+            style = paste0("background:", tier_color,
+                           "; color:#fff; border-radius:10px;",
+                           "padding:1px 9px; font-size:0.75em;"),
+            toupper(tier %||% "—")
+          )
+        ),
+        shiny::div(
+          style = "font-size:0.82em; color:#334155; margin-top:6px;",
+          shiny::tags$b("Patient: "), as.character(pid), "  |  ",
+          shiny::tags$b("Anomaly: "), anom %||% "N/A", "  |  ",
+          shiny::tags$b("Flags: "),
+          if (hi_flags > 0L)
+            shiny::tags$span(style = "color:#dc2626;",
+                              hi_flags, " high")
+          else "none",
+          if (n_flags > hi_flags && n_flags > 0L)
+            shiny::tags$span(style = "color:#64748b;",
+                              paste0(" (+", n_flags - hi_flags, " lower)"))
+        ),
+        shiny::div(
+          style = "font-size:0.74em; color:#64748b; margin-top:4px; font-style:italic;",
+          "This timeline shows structured OMOP records only.",
+          "It does not replace full chart review."
+        )
       )
     })
 

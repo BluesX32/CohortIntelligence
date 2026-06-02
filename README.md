@@ -2,10 +2,10 @@
 
 An OHDSI-native cohort exploration and hypothesis-generation workbench for
 **OMOP CDM** studies. CohortIntelligence sits between aggregate cohort
-diagnostics (ATLAS, CohortDiagnostics) and formal chart review — it provides
-a data-driven layer that helps researchers understand who is in their cohort,
-detect subgroups and outliers, prioritise patients for review, and generate
-candidate research hypotheses.
+diagnostics and formal downstream analysis. It provides a data-driven layer
+that helps researchers identify which cohort patterns, subgroups, and patients
+deserve targeted clinical or methodological review before committing to a
+formal study design.
 
 ---
 
@@ -31,24 +31,30 @@ ATLAS / CohortGenerator
       ↓
   Cohort table or JSON definition
       ↓
-  CohortDiagnostics  ←──  formal phenotype validation
+  CohortDiagnostics / DataQualityDashboard
+  (formal phenotype validation, data quality checks)
       ↓
-  ┌─────────────────────────────────────┐
-  │  CohortIntelligence                 │  ← YOU ARE HERE
-  │  Exploration · Subgroup discovery   │
-  │  Patient prioritisation · Hypotheses│
-  └─────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────┐
+  │  CohortIntelligence                             │  ← YOU ARE HERE
+  │  Exploration · Subgroup discovery               │
+  │  Patient prioritisation · Hypothesis generation │
+  └─────────────────────────────────────────────────┘
       ↓
-  Targeted chart review / clinical validation
+  Targeted clinical review planning · Clinician discussion
+  Formal phenotype validation · Cohort inspection
       ↓
-  Formal study design (PatientLevelPrediction,
-  CohortMethod, SelfControlledCaseSeries)
+  Formal study design
+  (PatientLevelPrediction / CohortMethod / SCCS /
+   Incidence rates / Treatment patterns)
 ```
 
 CohortIntelligence accepts any OMOP cohort — whether defined by an ATLAS JSON
 file, a pre-instantiated cohort table, or a synthetic in-memory dataset — and
-provides an interactive dashboard to explore it before committing to a formal
-analysis.
+provides an interactive dashboard to identify which cohort patterns, subgroups,
+and patients deserve targeted review before committing to a formal analysis.
+It does not replace CohortDiagnostics, formal chart review, or clinical
+adjudication. OMOP structured timelines are evidence summaries, not the
+complete clinical record.
 
 ---
 
@@ -190,39 +196,61 @@ Trajectory Review tab and Signal Explanation panel.
 
 ### Tab 3 — Review Queue
 
-Eight guided patient sets to structure chart review, ordered from low-risk
-(calibration) to high-risk (outlier/data-quality concern):
+Eight guided patient sets to structure **cohort inspection, clinician
+discussion, and targeted chart-review planning**, ordered from low-risk
+(calibration) to high-risk (outlier/data-completeness concern):
 
 | Set | Purpose |
 |---|---|
-| Typical patients | Low anomaly, common cluster — use as reference |
-| Most anomalous | Statistically unusual clinical pattern |
-| Sparse follow-up | Limited post-index data |
-| Rare cluster | Small or unassigned cluster |
-| High post-index activity | Intensive management after index |
-| High pre-index activity | Complex prior history |
-| Boundary patients | Moderate anomaly, borderline classification |
-| Temporal concern | High-severity temporal rule flag |
+| Typical patients | Use as calibration reference for a plausible cohort member |
+| Most anomalous | Review for unusual structured-data patterns or possible data artefacts |
+| Sparse follow-up | Assess whether missingness may limit interpretation |
+| Rare cluster | Inspect small clusters that may reflect uncommon patterns |
+| High post-index activity | Review whether post-index intensity reflects treatment or documentation |
+| High pre-index activity | Review whether complex prior history affects cohort entry |
+| Boundary patients | Inspect patients with ambiguous cluster assignment |
+| Temporal concern | Review temporal flags before interpreting trajectory |
 
 > **Suggested review order:** Start with Typical patients to calibrate
 > expectations, then Most Anomalous, then Sparse Follow-up. Temporal
-> Concern patients require flag review before trajectory inspection.
+> Concern patients should have flags reviewed before trajectory inspection.
 
 The **Signal Explanation** panel below the queue shows why the selected patient
-was flagged, using severity-tagged cards (red = high, amber = medium, blue = low).
+was prioritised, using severity-tagged cards (red = high, amber = medium, blue = low).
+Severity reflects relative prominence within this cohort, not absolute clinical risk.
 
 ### Tab 4 — Trajectory Review
 
-Per-patient swim-lane timeline of all OMOP domain events, with the Signal
-Explanation panel alongside. Filter by domain, top-N concepts, and day range
-relative to the index date.
+Per-patient structured evidence timeline across all OMOP domains, with the
+Signal Explanation panel alongside. Use this to inspect whether the structured
+OMOP record supports the signal that selected this patient. A "Review context"
+card shows the patient's review set, top signal, and temporal flags.
+
+> **Important:** The trajectory shows structured EHR records only — not free
+> text, imaging, waveforms, or out-of-network events. It is a structured
+> evidence summary, not a substitute for full chart review.
 
 ### Tab 5 — Hypothesis & Report
 
-Automatic cluster-pair feature comparison (Wilcoxon / Fisher's exact tests,
-BH-corrected). Click **Export Clinician Review Packet** for a self-contained
-HTML report covering cohort overview, cluster profiles, review sets, temporal
-flags, and top hypotheses — ready for a multidisciplinary meeting.
+Exploratory cluster-pair feature comparison (Wilcoxon / Fisher's exact tests,
+BH-corrected). These are **ranking signals**, not confirmatory statistics —
+clusters were derived from the same feature matrix being compared.
+
+A visible warning above the table explains this. Click
+**Export Clinician Review Packet** for a self-contained HTML report covering
+cohort overview, cluster profiles, review sets, temporal flags, and top
+hypotheses — ready for a multidisciplinary discussion meeting.
+
+### Demo story
+
+In demo mode: start with **Cohort Overview** to understand the cohort
+landscape (quilt pattern, demographics). Move to **Cluster & Anomaly** to
+inspect subgroup structure, cluster profiles, and temporal data-completeness
+flags. Use **Review Queue** to select typical patients (calibration), then
+most anomalous and sparse patients (prioritised inspection). Open
+**Trajectory Review** to inspect the structured OMOP timeline for a selected
+patient. Finally, use **Hypothesis & Report** to generate candidate research
+questions and export a discussion packet.
 
 ---
 
@@ -282,11 +310,16 @@ a causal claim, or a validated finding.
 
 ### Anomaly scores
 
-Scores range from 0 (typical) to 1 (unusual). A score above 0.7 means the
-patient's combination of clinical features is in the top 5–10% of the
-cohort's anomaly distribution. Possible causes: genuine clinical complexity,
-rare disease subtype, data coding differences, or data quality issues. All
-require clinical review to distinguish.
+Scores range from 0 (typical) to 1 (unusual). Higher scores indicate that a
+patient's structured OMOP feature pattern is **less typical relative to the
+current cohort**. Thresholds such as 0.7 are heuristic review cutoffs, not
+calibrated probabilities. A score of 0.7 means the pattern is relatively
+unusual within this specific cohort — it does not imply a fixed clinical
+risk level.
+
+Possible causes of a high score: genuine clinical complexity, rare disease
+subtype, data coding differences, or data quality issues. All require
+clinical review to distinguish.
 
 ### Cluster labels
 

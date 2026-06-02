@@ -24,6 +24,22 @@ hypothesis_panelUI <- function(id) {
                             style = "margin-top: 24px;")
       )
     ),
+    # Exploratory-inference warning — always visible above the table
+    shiny::fluidRow(
+      shiny::column(12,
+        shiny::div(
+          class = "alert alert-warning",
+          style = paste0("padding: 10px 14px; margin-bottom: 12px;",
+                         " font-size: 0.88em;"),
+          shiny::icon("triangle-exclamation"),
+          shiny::tags$b(" These comparisons are exploratory."),
+          " Clusters are derived from the same feature matrix being compared,",
+          " so p-values rank candidate signals only — they do not support",
+          " confirmatory inference.",
+          shiny::tags$b(" All hypotheses require independent validation and clinical review.")
+        )
+      )
+    ),
     shiny::fluidRow(
       shiny::column(12, shiny::uiOutput(ns("hyp_status")))
     ),
@@ -179,26 +195,38 @@ hypothesis_panelServer <- function(id, feature_matrix, ml_results) {
           rownames = FALSE, options = list(dom = "t")
         ))
       }
+
+      # Detect which p-value column name is present (handles both old and new)
+      p_col <- if ("exploratory_p_adjusted" %in% names(h)) {
+        "exploratory_p_adjusted"
+      } else if ("p_value_adjusted" %in% names(h)) {
+        "p_value_adjusted"
+      } else {
+        NULL
+      }
+
       df <- dplyr::mutate(h,
         direction = dplyr::case_when(
           direction == "higher_in_cluster_a" ~
-            paste0("↑ Cluster ", cluster_a),
+            paste0(shiny::icon("arrow-up"), " Cluster ", cluster_a),
           direction == "higher_in_cluster_b" ~
-            paste0("↑ Cluster ", cluster_b),
+            paste0(shiny::icon("arrow-up"), " Cluster ", cluster_b),
           TRUE ~ direction
         )
-      ) |>
-        dplyr::select(
-          hypothesis_id, cluster_a, cluster_b,
-          domain, concept_name, window_label,
-          effect_size, p_value_adjusted, direction
-        )
+      )
+
+      select_cols <- c("hypothesis_id","cluster_a","cluster_b",
+                       "domain","concept_name","window_label",
+                       "effect_size", p_col, "direction")
+      df <- dplyr::select(df, dplyr::all_of(select_cols[!is.null(select_cols)]))
+
+      col_names <- c("#","Cluster A","Cluster B","Domain",
+                     "Concept","Window",
+                     "Effect Size","Exploratory adj. p-value","Higher In")
 
       DT::datatable(
         df,
-        colnames  = c("#", "Cluster A", "Cluster B", "Domain",
-                      "Concept", "Window",
-                      "Effect Size", "Adj. p-value", "Higher In"),
+        colnames  = col_names[seq_len(ncol(df))],
         selection = "none",
         rownames  = FALSE,
         options   = list(
@@ -207,17 +235,13 @@ hypothesis_panelServer <- function(id, feature_matrix, ml_results) {
         ),
         class = "compact stripe hover"
       ) |>
-        DT::formatRound(c("effect_size", "p_value_adjusted"), digits = 3) |>
+        DT::formatRound(c("effect_size"), digits = 3) |>
         DT::formatStyle(
           "effect_size",
           background = DT::styleColorBar(c(0, 1), "#2c7bb6"),
           backgroundSize     = "98% 60%",
           backgroundRepeat   = "no-repeat",
           backgroundPosition = "center"
-        ) |>
-        DT::formatStyle(
-          "p_value_adjusted",
-          color = DT::styleInterval(c(0.01, 0.05), c("#dc2626", "#d97706", "#6b7280"))
         )
     })
 

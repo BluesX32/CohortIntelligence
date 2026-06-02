@@ -41,20 +41,32 @@ explain_patient_priority <- function(subject_id,
   if (!is.na(pat_rank$anomaly_score) && any(rank_df$anomaly_score > 0)) {
     score    <- pat_rank$anomaly_score
     pct_rank <- mean(rank_df$anomaly_score <= score, na.rm = TRUE)
+    # Clamp to avoid "top 0%" or "top 100%" due to rounding or ties.
+    pct_top  <- max(1, round(100 * (1 - pct_rank), 0))
     sev      <- if (score > 0.7) "high" else if (score > 0.4) "medium" else "low"
+
+    # Build a human-readable label that avoids misleading precision.
+    label <- if (pct_top <= 5) {
+      sprintf("High relative anomaly score (%.2f) -- among highest-scoring in cohort",
+               score)
+    } else if (pct_top <= 20) {
+      sprintf("Elevated anomaly score (%.2f) -- above ~%d%% of cohort",
+               score, 100 - pct_top)
+    } else {
+      sprintf("Anomaly score %.2f -- moderately unusual relative to cohort", score)
+    }
+
     rows[["anomaly"]] <- tibble::tibble(
       subject_id        = subject_id,
       explanation_type  = "anomaly_score",
-      explanation_label = sprintf("Anomaly score %.2f (top %.0f%% of cohort)",
-                                   score, 100 * (1 - pct_rank)),
+      explanation_label = label,
       explanation_detail = paste0(
-        "This patient's combination of clinical events is statistically unusual ",
-        "relative to the cohort. Score ", round(score, 2),
-        " places them in the top ", round(100 * (1 - pct_rank), 0),
-        "% of the anomaly distribution. ",
-        "Possible causes include rare disease sub-patterns, data coding ",
-        "differences, or genuinely atypical clinical trajectories. ",
-        "Requires clinical review."
+        "This patient's structured OMOP feature pattern is less typical relative ",
+        "to the current cohort (score: ", round(score, 2), "). ",
+        "This threshold is a heuristic review cutoff, not a calibrated probability. ",
+        "Possible causes include rare disease sub-patterns, data coding differences, ",
+        "short observation periods, or genuinely atypical clinical trajectories. ",
+        "Requires clinical review to interpret."
       ),
       domain            = NA_character_,
       window_label      = NA_character_,

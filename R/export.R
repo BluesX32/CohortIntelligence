@@ -495,10 +495,13 @@ export_clinician_review_packet <- function(results,
     htmltools::tags$div(
       class = "disclaimer",
       htmltools::tags$b("IMPORTANT DISCLAIMER: "),
-      "This report is hypothesis-generating and based on structured OMOP CDM ",
-      "evidence only. It does NOT replace formal chart review, clinical ",
-      "adjudication, or causal inference analysis. All findings are preliminary ",
-      "and require clinical validation before use in research or patient care."
+      "This report is based on structured OMOP CDM evidence and is intended ",
+      "for hypothesis generation, cohort inspection, and clinician discussion. ",
+      "It does NOT replace formal chart review, clinical adjudication, ",
+      "or causal inference analysis. OMOP patient timelines are structured ",
+      "evidence summaries, not the complete clinical record. ",
+      "All findings are preliminary and require independent validation ",
+      "before use in research or patient care."
     )
   )
 
@@ -603,16 +606,30 @@ export_clinician_review_packet <- function(results,
 
   # Hypotheses
   if (isTRUE(include$hypotheses) && !is.null(hyp) && nrow(hyp) > 0L) {
+    # Handle both old (p_value_adjusted) and new (exploratory_p_adjusted) column names
+    p_col <- if ("exploratory_p_adjusted" %in% names(hyp)) "exploratory_p_adjusted"
+             else "p_value_adjusted"
     h_disp <- hyp |>
       dplyr::slice_head(n = 10L) |>
       dplyr::mutate(
-        p_value_adjusted = round(p_value_adjusted, 4),
-        effect_size      = round(effect_size, 3)
+        .p = round(.data[[p_col]], 4),
+        effect_size = round(effect_size, 3)
       ) |>
       dplyr::select(cluster_a, cluster_b, domain, concept_name,
-                    window_label, effect_size, p_value_adjusted, direction)
+                    window_label, effect_size, .p, direction)
+    names(h_disp)[names(h_disp) == ".p"] <- "Exploratory adj. p-value"
+
     sections$hyp <- htmltools::tagList(
       htmltools::tags$h2("Candidate Research Hypotheses (Top 10)"),
+      htmltools::tags$div(
+        style = paste0("background:#fffbeb; border:1px solid #fde68a;",
+                       "border-radius:4px; padding:8px 12px;",
+                       "font-size:0.84em; margin-bottom:10px;"),
+        htmltools::tags$b("Note: "),
+        "Cluster-comparison p-values are descriptive ranking signals and ",
+        "should not be interpreted as confirmatory statistical evidence. ",
+        "Clusters are derived from the same feature matrix being compared."
+      ),
       htmltools::tags$p(class = "section-note",
         "Statistical tests compare feature distributions between ML clusters. ",
         "Circular: clusters were defined on the same data. Requires external validation."),

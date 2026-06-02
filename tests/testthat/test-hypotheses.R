@@ -22,7 +22,7 @@ test_that("generate_hypotheses returns correct columns", {
                               min_effect_size = 0, max_hypotheses = 5L)
   if (nrow(res) > 0L) {
     expected <- c("hypothesis_id","cluster_a","cluster_b","domain","concept_name",
-                  "window_label","effect_size","p_value_raw","p_value_adjusted",
+                  "window_label","effect_size","p_value_raw","exploratory_p_adjusted",
                   "direction","description_text")
     expect_true(all(expected %in% names(res)))
   }

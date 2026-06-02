@@ -118,10 +118,12 @@ shinydashboard::dashboardPage(
             shiny::h3("Cohort Overview",
                        shiny::tags$small(
                          style = "color:#64748b; font-size:0.6em; margin-left:10px;",
-                         "Quilt plot, demographics, and data density"
+                         "Use these cards to orient before inspecting the quilt plot."
                        ))
           )
         ),
+        # Summary cards — rendered by server.R
+        shiny::uiOutput("overview_summary_cards"),
         cohort_overviewUI("overview"),
         shiny::hr(),
         demographicsUI("demographics")
