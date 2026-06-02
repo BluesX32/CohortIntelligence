@@ -11,16 +11,28 @@ formal study design.
 
 ## Table of contents
 
-1. [Where it fits in the OHDSI workflow](#ohdsi-workflow)
-2. [What it is not](#what-it-is-not)
-3. [Installation](#installation)
-4. [Quick start](#quick-start)
-5. [Dashboard overview](#dashboard-overview)
-6. [Cohort input](#cohort-input)
-7. [How to interpret results](#how-to-interpret-results)
-8. [Key functions](#key-functions)
-9. [Package structure](#package-structure)
-10. [Author](#author)
+1. [Screenshot](#screenshot)
+2. [Where it fits in the OHDSI workflow](#ohdsi-workflow)
+3. [How it complements OHDSI tools](#ohdsi-tools)
+4. [What it is not](#what-it-is-not)
+5. [Installation](#installation)
+6. [Quick start](#quick-start)
+7. [Dashboard overview](#dashboard-overview)
+8. [Cohort input](#cohort-input)
+9. [How to interpret results](#how-to-interpret-results)
+10. [Key functions](#key-functions)
+11. [Package structure](#package-structure)
+12. [Author](#author)
+
+---
+
+## Screenshot {#screenshot}
+
+<!-- Replace the placeholder below with an actual screenshot or GIF once the
+     app is running. Recommended: 1280×800 px, saved to docs/screenshot.png -->
+
+> *Screenshot / GIF coming — run `launch_cohort_intelligence()` in demo mode
+> to see the dashboard live.*
 
 ---
 
@@ -32,7 +44,7 @@ ATLAS / CohortGenerator
   Cohort table or JSON definition
       ↓
   CohortDiagnostics / DataQualityDashboard
-  (formal phenotype validation, data quality checks)
+  (cohort-level diagnostics and CDM-level data quality checks)
       ↓
   ┌─────────────────────────────────────────────────┐
   │  CohortIntelligence                             │  ← YOU ARE HERE
@@ -41,7 +53,7 @@ ATLAS / CohortGenerator
   └─────────────────────────────────────────────────┘
       ↓
   Targeted clinical review planning · Clinician discussion
-  Formal phenotype validation · Cohort inspection
+  Formal phenotype validation or cohort refinement, if needed
       ↓
   Formal study design
   (PatientLevelPrediction / CohortMethod / SCCS /
@@ -55,6 +67,26 @@ and patients deserve targeted review before committing to a formal analysis.
 It does not replace CohortDiagnostics, formal chart review, or clinical
 adjudication. OMOP structured timelines are evidence summaries, not the
 complete clinical record.
+
+---
+
+## How it complements OHDSI tools {#ohdsi-tools}
+
+CohortIntelligence is designed to be used **alongside** the OHDSI stack, not
+instead of it. Each tool has a distinct role:
+
+| OHDSI Tool | Primary role | How CohortIntelligence relates |
+|---|---|---|
+| **ATLAS** | Cohort definition via concept sets and inclusion rules | CI accepts ATLAS JSON definitions directly via `CirceR`; run ATLAS first to define and validate the phenotype |
+| **CohortDiagnostics** | Cohort-level diagnostics — attrition, concept prevalence, incidence rates | Run CohortDiagnostics first to validate cohort quality; CI then explores patient-level patterns within the validated cohort |
+| **DataQualityDashboard** | CDM-level data quality checks (conformance, completeness, plausibility) | DQD checks the site's CDM; CI surfaces patient-level data patterns (e.g., sparse follow-up, unmapped concepts) as review triggers |
+| **FeatureExtraction** | Structured covariate extraction for downstream models | CI provides *interactive* covariate exploration to guide which features matter before committing to a formal extraction |
+| **PatientLevelPrediction** | Supervised ML for outcome prediction | CI identifies subgroups that may need separate models or covariate adjustments before PLP is run |
+| **CohortMethod / SCCS** | Comparative effectiveness and safety estimation | CI helps refine and sanity-check cohorts (population substructure, data completeness) before committing to a causal analysis design |
+| **Strategus / HADES** | Orchestration of multi-study OHDSI analyses | CI is an early-stage exploration step; its outputs inform study design choices passed downstream into Strategus pipelines |
+
+> **Suggested order:** ATLAS → CohortDiagnostics / DQD → **CohortIntelligence**
+> → PatientLevelPrediction / CohortMethod / SCCS
 
 ---
 

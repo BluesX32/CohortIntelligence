@@ -71,8 +71,11 @@ build_patient_timeline <- function(subject_id,
     if (!spec$date_col %in% names(df)) return(tibble::tibble())
     if (!spec$name_col %in% names(df)) df[[spec$name_col]] <- paste0(d, "_unknown")
 
-    # Remove null / "No matching concept" rows
+    # Remove unmapped/null concept rows (keep only named clinical concepts).
+    # "No matching concept" is the legacy OMOP CDM label; normalised to
+    # "Unmapped concept" at extract time, but both are filtered as a safeguard.
     valid_name <- !is.na(df[[spec$name_col]]) &
+                  df[[spec$name_col]] != "Unmapped concept" &
                   df[[spec$name_col]] != "No matching concept" &
                   nzchar(df[[spec$name_col]])
     df <- df[valid_name, , drop = FALSE]

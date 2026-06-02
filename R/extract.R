@@ -240,8 +240,31 @@ extract_omop_domains.cohort_df_connector <- function(connector,
       death       = "death_date"
     )
     df <- .to_date_cols(df, date_cols)
+    df <- .normalize_concept_names(df, domain)
     tibble::as_tibble(df)
   })
+}
+
+# Replaces the OMOP CDM concept_id=0 label with a consistent display term.
+.normalize_concept_names <- function(df, domain) {
+  name_col <- switch(domain,
+    condition   = "condition_name",
+    drug        = "drug_name",
+    procedure   = "procedure_name",
+    measurement = "measurement_name",
+    observation = "observation_name",
+    visit       = "visit_type",
+    death       = "cause_name",
+    NULL
+  )
+  if (!is.null(name_col) && name_col %in% names(df)) {
+    df[[name_col]] <- ifelse(
+      !is.na(df[[name_col]]) & df[[name_col]] == "No matching concept",
+      "Unmapped concept",
+      df[[name_col]]
+    )
+  }
+  df
 }
 
 # ---------------------------------------------------------------------------

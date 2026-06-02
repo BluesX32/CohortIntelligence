@@ -51,34 +51,45 @@ anomaly_explorerServer <- function(id, ml_results, selected_patient) {
         )))
       }
 
-      df          <- ml$merged
-      df$selected <- df$subject_id == (selected_patient() %||% -1L)
+      df               <- ml$merged
+      df$selected      <- df$subject_id == (selected_patient() %||% -1L)
+      df$cluster_label <- ifelse(df$cluster_id <= 0L, "Unassigned",
+                                  paste0("Cluster ", df$cluster_id))
 
-      # Colour by cluster; selected patient gets a star marker
+      # Colour by cluster label; selected patient distinguished by star + size.
+      # Symbol is kept in marker (not as a top-level aesthetic) so plotly does
+      # not inject "circle" / "star" entries into the legend.
       plotly::plot_ly(
-        data         = df,
-        x            = ~umap_1,
-        y            = ~umap_2,
-        color        = ~as.factor(cluster_id),
-        symbol       = ~ifelse(selected, "star", "circle"),
-        symbols      = c("circle", "star"),
-        size         = ~ifelse(selected, 12, 7),
-        sizes        = c(6, 14),
-        type         = "scatter",
-        mode         = "markers",
-        text         = ~paste0(
+        data      = df,
+        x         = ~umap_1,
+        y         = ~umap_2,
+        color     = ~cluster_label,
+        type      = "scatter",
+        mode      = "markers",
+        marker    = list(
+          size    = ifelse(df$selected, 13L, 7L),
+          symbol  = ifelse(df$selected, "star", "circle"),
+          opacity = 0.85,
+          line    = list(width = 0.5,
+                         color = "rgba(255,255,255,0.6)")
+        ),
+        text      = ~paste0(
           "<b>Patient:</b> ", subject_id,
-          "<br><b>Cluster:</b> ", cluster_id,
+          "<br><b>Cluster:</b> ", cluster_label,
           "<br><b>Anomaly score:</b> ", round(anomaly_score, 3),
           "<br><i>Click to select</i>"
         ),
-        hoverinfo    = "text",
-        source       = "umap"
+        hoverinfo = "text",
+        source    = "umap"
       ) |>
         plotly::layout(
-          xaxis  = list(title = "UMAP 1",  zeroline = FALSE),
-          yaxis  = list(title = "UMAP 2",  zeroline = FALSE),
-          legend = list(title = list(text = "<b>Cluster</b>")),
+          xaxis  = list(title = "UMAP 1", zeroline = FALSE),
+          yaxis  = list(title = "UMAP 2", zeroline = FALSE),
+          legend = list(
+            title          = list(text = "<b>Cluster</b>"),
+            tracegroupgap  = 0,
+            itemsizing     = "constant"
+          ),
           paper_bgcolor = "#FAFAFA",
           plot_bgcolor  = "#F0F2F5"
         ) |>

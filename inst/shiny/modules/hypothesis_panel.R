@@ -208,9 +208,9 @@ hypothesis_panelServer <- function(id, feature_matrix, ml_results) {
       df <- dplyr::mutate(h,
         direction = dplyr::case_when(
           direction == "higher_in_cluster_a" ~
-            paste0(shiny::icon("arrow-up"), " Cluster ", cluster_a),
+            paste0("↑ Cluster ", cluster_a),
           direction == "higher_in_cluster_b" ~
-            paste0(shiny::icon("arrow-up"), " Cluster ", cluster_b),
+            paste0("↑ Cluster ", cluster_b),
           TRUE ~ direction
         )
       )
@@ -229,6 +229,7 @@ hypothesis_panelServer <- function(id, feature_matrix, ml_results) {
         colnames  = col_names[seq_len(ncol(df))],
         selection = "none",
         rownames  = FALSE,
+        escape    = FALSE,
         options   = list(
           pageLength = 10, scrollX = TRUE,
           order      = list(list(7, "asc"))

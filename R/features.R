@@ -726,6 +726,10 @@ build_cluster_profiles <- function(rank_df,
         prevalence = round(100 * n_patients / n_patients_total, 1)
       ) |>
       dplyr::select(cluster_id, domain, concept_name, n_patients, prevalence) |>
+      dplyr::filter(!grepl(
+        "^(Unmapped concept|No matching concept)$",
+        concept_name, ignore.case = TRUE
+      )) |>
       dplyr::arrange(cluster_id, dplyr::desc(prevalence)) |>
       dplyr::group_by(cluster_id) |>
       dplyr::slice_head(n = as.integer(top_n)) |>

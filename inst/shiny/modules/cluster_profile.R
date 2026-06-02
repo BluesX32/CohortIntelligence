@@ -220,8 +220,9 @@ cluster_profileServer <- function(id, rank_df, domain_data,
           dplyr::mutate(prevalence = dplyr::coalesce(prevalence, 0))
 
         plotly::plot_ly(
-          x           = ~full$prevalence,
-          y           = ~full$concept_name,
+          data        = full,
+          x           = ~prevalence,
+          y           = ~concept_name,
           type        = "bar",
           orientation = "h",
           name        = label,

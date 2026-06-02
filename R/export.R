@@ -312,13 +312,17 @@ export_cohort_report <- function(results,
   # Top hypotheses
   if (!is.null(hyp) && nrow(hyp) > 0L) {
     h_disp <- hyp |>
+      dplyr::filter(!grepl(
+        "^(Unmapped concept|No matching concept)$",
+        concept_name, ignore.case = TRUE
+      )) |>
       dplyr::slice_head(n = 10L) |>
       dplyr::mutate(
-        p_value_adjusted = round(p_value_adjusted, 4),
-        effect_size      = round(effect_size, 3)
+        exploratory_p_adjusted = round(exploratory_p_adjusted, 4),
+        effect_size            = round(effect_size, 3)
       ) |>
       dplyr::select(cluster_a, cluster_b, domain, concept_name,
-                    window_label, effect_size, p_value_adjusted, direction)
+                    window_label, effect_size, exploratory_p_adjusted, direction)
     sections[["hyp"]] <- htmltools::tagList(
       htmltools::tags$h2("Top Hypothesis Candidates"),
       htmltools::tags$p(
@@ -327,7 +331,7 @@ export_cohort_report <- function(results,
       ),
       .df_to_html_table(h_disp, c("Cluster A", "Cluster B", "Domain",
                                     "Concept", "Window", "Effect",
-                                    "Adj. p", "Direction"))
+                                    "Exploratory adj. p", "Direction"))
     )
   }
 

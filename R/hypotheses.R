@@ -14,9 +14,11 @@
 #' @param min_effect_size Numeric. Minimum absolute effect size (rank-biserial
 #'   correlation for continuous, Cramer's V for binary) to retain.
 #' @param max_hypotheses Integer. Maximum number of hypotheses to return.
-#' @param include_unmapped Logical. If `FALSE` (default), concepts named
-#'   `"No matching concept"`, `"Unmapped concept"`, or similar are excluded
-#'   from the ranked output so they do not dominate the hypothesis list.
+#' @param include_unmapped Logical. If `FALSE` (default), concepts labelled
+#'   `"Unmapped concept"` (the canonical term for OMOP concept_id = 0) or
+#'   similar are excluded from the ranked output. Unmapped concepts reflect
+#'   vocabulary coverage gaps and are data-quality signals, not clinical
+#'   hypotheses. Set `TRUE` only to audit mapping coverage.
 #'
 #' @return tibble(hypothesis_id, cluster_a, cluster_b, domain, concept_name,
 #'   window_label, effect_size, p_value_raw, exploratory_p_adjusted,
@@ -99,9 +101,13 @@ generate_hypotheses <- function(feature_matrix,
   results$exploratory_p_adjusted <- stats::p.adjust(results$p_value_raw,
                                                       method = "BH")
 
-  # Filter unmapped concepts by default (they pollute top hypotheses)
+  # Filter unmapped concepts by default. "Unmapped concept" is the canonical
+  # label (normalised at extract time); "No matching concept" is retained as
+  # a legacy fallback for data loaded before that normalisation was applied.
+  # These entries are data-quality signals (vocabulary coverage gaps), not
+  # clinical hypotheses, and should not rank among the top findings.
   if (!include_unmapped) {
-    unmapped_pattern <- "^(No matching concept|Unmapped concept|unknown|NA)$"
+    unmapped_pattern <- "^(Unmapped concept|No matching concept|unknown|NA)$"
     results <- results[
       !grepl(unmapped_pattern, results$concept_name, ignore.case = TRUE),
       , drop = FALSE
@@ -144,10 +150,21 @@ format_hypotheses_report <- function(hypotheses_df,
     txt <- "No significant hypotheses found."
     return(if (format == "html") paste0("<p>", txt, "</p>") else txt)
   }
+  dq_note <- paste0(
+    "Note: concepts labelled \"Unmapped concept\" indicate vocabulary coverage",
+    " gaps and are data-quality signals, not clinical hypotheses. They are",
+    " excluded by default (see include_unmapped parameter)."
+  )
   lines <- paste0(seq_len(nrow(hypotheses_df)), ". ",
                   hypotheses_df$description_text)
-  if (format == "text") return(paste(lines, collapse = "\n"))
-  paste0("<ol>", paste0("<li>", lines, "</li>", collapse = ""), "</ol>")
+  if (format == "text") {
+    return(paste(c(paste(lines, collapse = "\n"), "", dq_note),
+                 collapse = "\n"))
+  }
+  paste0(
+    "<ol>", paste0("<li>", lines, "</li>", collapse = ""), "</ol>",
+    "<p class=\"dq-note\"><em>", dq_note, "</em></p>"
+  )
 }
 
 # ---------------------------------------------------------------------------
