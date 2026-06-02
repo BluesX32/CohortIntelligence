@@ -50,6 +50,23 @@ demographicsUI <- function(id) {
 demographicsServer <- function(id, cohort_members, domain_data, person_data) {
   shiny::moduleServer(id, function(input, output, session) {
 
+    # Visible message plot with white background (contrast against grey page)
+    .demo_density_message <- function(msg) {
+      plotly::plot_ly(
+        x = 0.5, y = 0.5,
+        type = "scatter", mode = "text",
+        text = msg,
+        textfont = list(size = 13, color = "#64748b")
+      ) |>
+        plotly::layout(
+          xaxis = list(visible = FALSE, range = c(0, 1)),
+          yaxis = list(visible = FALSE, range = c(0, 1)),
+          paper_bgcolor = "#FFFFFF",
+          plot_bgcolor  = "#FFFFFF"
+        ) |>
+        plotly::config(displayModeBar = FALSE)
+    }
+
     # ---------------------------------------------------------------------------
     # Reactive computations
     # IMPORTANT: none of these use shiny::req() -- they always return a valid
@@ -57,11 +74,14 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
     # Using req() would silently abort the reactive and leave outputs blank.
     # ---------------------------------------------------------------------------
 
-    # Cohort member count (always an integer, 0 when not yet loaded)
+    # Cohort member count -- always an integer.
+    # Evaluating cohort_members() here registers a reactive dependency so that
+    # when rv$cohort_members changes (cohort loads), this reactive re-fires and
+    # all outputs that depend on it re-render automatically.
     n_patients_rv <- shiny::reactive({
       cm <- cohort_members()
-      if (is.null(cm) || nrow(cm) == 0L) return(0L)
-      nrow(cm)
+      if (is.null(cm) || !is.data.frame(cm) || nrow(cm) == 0L) return(0L)
+      as.integer(nrow(cm))
     })
 
     # Full summary -- always returns a valid list (never NULL, never aborts)
@@ -93,11 +113,17 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
       )
     })
 
-    # Data density -- always returns a tibble (empty when not ready)
+    # Data density -- always returns a tibble (empty when not ready).
+    # Both cohort_members() and domain_data() are evaluated unconditionally so
+    # that the reactive registers dependencies on both and re-fires when either
+    # becomes available (early-exit on is.null would skip one dependency).
     density_rv <- shiny::reactive({
       cm <- cohort_members()
       dd <- domain_data()
-      if (is.null(cm) || nrow(cm) == 0L || is.null(dd)) {
+      if (is.null(cm) || !is.data.frame(cm) || nrow(cm) == 0L) {
+        return(tibble::tibble())
+      }
+      if (is.null(dd) || length(dd) == 0L) {
         return(tibble::tibble())
       }
       tryCatch(
@@ -181,7 +207,8 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
     output$age_plot <- plotly::renderPlotly({
       s <- summary_rv()
       if (is.null(s) || nrow(s$age_df) == 0L) {
-        return(empty_plotly("Age data not available."))
+        return(.demo_density_message("Age data not available
+(person demographics not extracted)"))
       }
       plotly::plot_ly(
         x    = ~s$age_df$age_at_index,
@@ -201,7 +228,8 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
     output$sex_plot <- plotly::renderPlotly({
       s <- summary_rv()
       if (is.null(s) || nrow(s$sex_df) == 0L) {
-        return(empty_plotly("Sex data not available."))
+        return(.demo_density_message("Sex / gender data not available
+(person demographics not extracted)"))
       }
       plotly::plot_ly(
         labels = ~s$sex_df$gender_name,
@@ -221,7 +249,8 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
     output$race_plot <- plotly::renderPlotly({
       s <- summary_rv()
       if (is.null(s) || nrow(s$race_df) == 0L) {
-        return(empty_plotly("Race/ethnicity data not available."))
+        return(.demo_density_message("Race / ethnicity data not available
+(person demographics not extracted)"))
       }
       df <- dplyr::arrange(s$race_df, n)
       plotly::plot_ly(
@@ -240,53 +269,89 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
 
     # ── Data density heatmap ──────────────────────────────────────────────────
     output$density_plot <- plotly::renderPlotly({
-      dd <- density_rv()
-      if (nrow(dd) == 0L) {
-        return(empty_plotly("No data density information available."))
-      }
+      tryCatch({
+        cm <- cohort_members()
+        dd <- density_rv()
 
-      domain_colors <- c(
-        condition   = "#D73027",
-        drug        = "#313695",
-        procedure   = "#1A9641",
-        measurement = "#6A3D9A",
-        observation = "#B35806",
-        visit       = "#41B6C4",
-        death       = "#252525"
-      )
+        # Loading state: cohort not yet loaded
+        if (is.null(cm) || nrow(cm) == 0L) {
+          return(.demo_density_message("Cohort loading..."))
+        }
 
-      domains <- sort(unique(dd$domain))
-      traces  <- lapply(seq_along(domains), function(i) {
-        d_name  <- domains[[i]]
-        df_d    <- dplyr::filter(dd, domain == d_name)
-        hi_col  <- domain_colors[[d_name]] %||% "#333333"
-        plotly::plot_ly(
-          x    = ~df_d$calendar_month,
-          y    = rep(d_name, nrow(df_d)),
-          z    = ~df_d$n_patients,
-          type = "heatmap",
-          colorscale = list(c(0, "#FFFFFF"), c(1, hi_col)),
-          showscale  = (i == 1L),
-          colorbar   = list(title = "Patients"),
-          hovertemplate = paste0(
-            "<b>Domain:</b> ", d_name, "<br>",
-            "<b>Month:</b> %{x|%Y-%m}<br>",
-            "<b>Patients:</b> %{z}<extra></extra>"
-          )
+        # Empty state: domain data extracted but no events to plot
+        if (is.null(dd) || nrow(dd) == 0L) {
+          return(.demo_density_message(
+            paste0("No event data available.\n",
+                   "(", nrow(cm), " patients loaded; ",
+                   "domain data may still be extracting.)")
+          ))
+        }
+
+        domain_colors <- c(
+          condition   = "#D73027", drug        = "#313695",
+          procedure   = "#1A9641", measurement = "#6A3D9A",
+          observation = "#B35806", visit       = "#41B6C4",
+          death       = "#252525"
         )
+
+        # One heatmap trace per domain, stacked vertically (nrows = n_domains)
+        domains <- intersect(
+          c("condition","drug","procedure","measurement","observation","visit","death"),
+          unique(dd$domain)
+        )
+
+        traces <- lapply(seq_along(domains), function(i) {
+          d_name <- domains[[i]]
+          df_d   <- dplyr::filter(dd, domain == d_name) |>
+            dplyr::arrange(calendar_month)
+          hi_col <- domain_colors[[d_name]] %||% "#333333"
+          plotly::plot_ly(
+            x    = df_d$calendar_month,
+            y    = rep(d_name, nrow(df_d)),
+            z    = df_d$n_patients,
+            type = "heatmap",
+            colorscale = list(c(0, "#FFFFFF"), c(1, hi_col)),
+            showscale  = (i == 1L),
+            colorbar   = list(title = "N patients", len = 0.5),
+            hovertemplate = paste0(
+              "<b>Domain:</b> ", d_name, "<br>",
+              "<b>Month:</b> %{x|%b %Y}<br>",
+              "<b>Patients with events:</b> %{z}<extra></extra>"
+            )
+          )
+        })
+
+        if (length(traces) == 0L) {
+          return(.demo_density_message("No domain events to display."))
+        }
+
+        # Combine: one row per domain, shared x-axis
+        p <- do.call(plotly::subplot, c(
+          traces,
+          list(
+            nrows       = length(traces),
+            shareX      = TRUE,
+            titleY      = TRUE,
+            margin      = 0.04
+          )
+        ))
+
+        plotly::layout(p,
+          xaxis  = list(
+            title    = "Calendar month",
+            tickformat = "%b %Y",
+            showgrid = FALSE
+          ),
+          margin        = list(l = 110, r = 20, t = 10, b = 60),
+          paper_bgcolor = "#FFFFFF",
+          plot_bgcolor  = "#FFFFFF"
+        ) |>
+          plotly::config(displayModeBar = FALSE)
+
+      }, error = function(e) {
+        message("[CI Demographics] density_plot render error: ", conditionMessage(e))
+        .demo_density_message(paste0("Chart unavailable: ", conditionMessage(e)))
       })
-
-      p <- do.call(plotly::subplot, c(
-        traces,
-        list(nrows = 1L, shareY = TRUE, titleX = TRUE, margin = 0.02)
-      ))
-
-      plotly::layout(p,
-        xaxis  = list(title = "Calendar month"),
-        yaxis  = list(title = ""),
-        margin = list(l = 100, r = 20, t = 30, b = 50),
-        paper_bgcolor = "#FAFAFA"
-      )
     })
 
     # Render eagerly even when the Demographics tab is not visible so that
