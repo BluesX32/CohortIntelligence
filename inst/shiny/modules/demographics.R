@@ -50,22 +50,44 @@ demographicsUI <- function(id) {
 demographicsServer <- function(id, cohort_members, domain_data, person_data) {
   shiny::moduleServer(id, function(input, output, session) {
 
-    # Pre-compute summaries once data is available
+    # n_patients is derived directly -- never depends on person_data
+    n_patients_rv <- shiny::reactive({
+      cm <- cohort_members()
+      if (is.null(cm)) return(0L)
+      nrow(cm)
+    })
+
+    # Full summary (may be NULL if build_cohort_summary fails)
     summary_rv <- shiny::reactive({
       shiny::req(cohort_members())
-      build_cohort_summary(cohort_members(), person_data())
+      tryCatch(
+        build_cohort_summary(cohort_members(), person_data()),
+        error = function(e) {
+          message("[CI Demographics] build_cohort_summary failed: ",
+                  conditionMessage(e))
+          NULL
+        }
+      )
     })
 
     density_rv <- shiny::reactive({
-      shiny::req(domain_data(), cohort_members())
-      build_data_density(domain_data(), cohort_members())
+      shiny::req(cohort_members())
+      dd <- domain_data()
+      if (is.null(dd)) return(tibble::tibble())
+      tryCatch(
+        build_data_density(dd, cohort_members()),
+        error = function(e) {
+          message("[CI Demographics] build_data_density failed: ",
+                  conditionMessage(e))
+          tibble::tibble()
+        }
+      )
     })
 
     # ── Value boxes ───────────────────────────────────────────────────────────
     output$box_n <- shinydashboard::renderValueBox({
-      s <- summary_rv()
       shinydashboard::valueBox(
-        value    = format(s$n_patients, big.mark = ","),
+        value    = format(n_patients_rv(), big.mark = ","),
         subtitle = "Patients in cohort",
         icon     = shiny::icon("users"),
         color    = "blue"
@@ -74,11 +96,9 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
 
     output$box_fu <- shinydashboard::renderValueBox({
       s   <- summary_rv()
-      val <- if (!is.na(s$median_followup)) {
+      val <- if (!is.null(s) && !is.na(s$median_followup)) {
         paste0(round(s$median_followup / 30.4375, 1), " mo")
-      } else {
-        "N/A"
-      }
+      } else "N/A"
       shinydashboard::valueBox(
         value    = val,
         subtitle = "Median follow-up",
@@ -89,7 +109,9 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
 
     output$box_age <- shinydashboard::renderValueBox({
       s   <- summary_rv()
-      val <- if (!is.na(s$median_age)) round(s$median_age, 1) else "N/A"
+      val <- if (!is.null(s) && !is.na(s$median_age)) {
+        round(s$median_age, 1)
+      } else "N/A"
       shinydashboard::valueBox(
         value    = val,
         subtitle = "Median age at index",
@@ -125,7 +147,9 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
     # ── Age histogram ─────────────────────────────────────────────────────────
     output$age_plot <- plotly::renderPlotly({
       s <- summary_rv()
-      if (nrow(s$age_df) == 0L) return(empty_plotly("No age data available."))
+      if (is.null(s) || nrow(s$age_df) == 0L) {
+        return(empty_plotly("Age data not available."))
+      }
       plotly::plot_ly(
         x    = ~s$age_df$age_at_index,
         type = "histogram",
@@ -143,7 +167,9 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
     # ── Sex pie ───────────────────────────────────────────────────────────────
     output$sex_plot <- plotly::renderPlotly({
       s <- summary_rv()
-      if (nrow(s$sex_df) == 0L) return(empty_plotly("No sex data available."))
+      if (is.null(s) || nrow(s$sex_df) == 0L) {
+        return(empty_plotly("Sex data not available."))
+      }
       plotly::plot_ly(
         labels = ~s$sex_df$gender_name,
         values = ~s$sex_df$n,
@@ -161,8 +187,8 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
     # ── Race horizontal bar ───────────────────────────────────────────────────
     output$race_plot <- plotly::renderPlotly({
       s <- summary_rv()
-      if (nrow(s$race_df) == 0L) {
-        return(empty_plotly("No race/ethnicity data."))
+      if (is.null(s) || nrow(s$race_df) == 0L) {
+        return(empty_plotly("Race/ethnicity data not available."))
       }
       df <- dplyr::arrange(s$race_df, n)
       plotly::plot_ly(
