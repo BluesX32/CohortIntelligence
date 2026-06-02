@@ -256,11 +256,29 @@ cohort_overviewServer <- function(id,
     })
 
     # ── 4. Click → patient selection ────────────────────────────────────────
+    # Heatmap traces in a subplot do not reliably return click$customdata.
+    # Primary: parse patient ID from the y-axis label ("P12345 [C1]" -> 12345).
+    # Fallback: use customdata if the primary parse fails.
     shiny::observe({
       click <- plotly::event_data("plotly_click", source = "quilt",
                                    session = session)
-      shiny::req(!is.null(click), !is.null(click$customdata))
-      pid <- suppressWarnings(as.integer(click$customdata))
+      shiny::req(!is.null(click))
+
+      pid <- NA_integer_
+
+      # Primary: y-axis label is display_label = "P{subject_id}" or
+      # "P{subject_id} [C{cluster_id}]"
+      if (!is.null(click$y) && nzchar(click$y)) {
+        pid <- suppressWarnings(
+          as.integer(sub("^P(\\d+).*$", "\\1", trimws(click$y)))
+        )
+      }
+
+      # Fallback: customdata (works for some plotly/browser combinations)
+      if (is.na(pid) && !is.null(click$customdata)) {
+        pid <- suppressWarnings(as.integer(click$customdata))
+      }
+
       if (!is.na(pid)) selected_patient(pid)
     })
 

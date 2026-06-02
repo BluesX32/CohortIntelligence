@@ -185,9 +185,12 @@ review_setsServer <- function(id, review_sets_rv, selected_patient) {
 
     shiny::observeEvent(input$queue_table_rows_selected, {
       idx <- input$queue_table_rows_selected
-      if (!is.null(idx)) {
-        pid <- filtered_rs()$subject_id[[idx]]
-        selected_patient(pid)
+      if (!is.null(idx) && length(idx) > 0L) {
+        rs  <- filtered_rs()
+        if (!is.null(rs) && idx <= nrow(rs)) {
+          pid <- rs$subject_id[[idx]]
+          if (!is.na(pid)) selected_patient(as.integer(pid))
+        }
       }
     })
   })
