@@ -1,7 +1,13 @@
 # global.R -- sourced automatically by Shiny before ui.R and server.R.
 # Defines shared utilities available to all modules without extra sourcing.
 
-library(CohortIntelligence)
+# In development (devtools::load_all), the package is already in the
+# search path -- calling library() here would reload the stale installed
+# version and overwrite every function from load_all().
+# Only load from the installed package when NOT in development mode.
+if (!isNamespaceLoaded("CohortIntelligence")) {
+  library(CohortIntelligence)
+}
 
 # Returns an empty plotly figure with a centred message.
 # Avoids "No trace type specified" warnings from bare plot_ly().
