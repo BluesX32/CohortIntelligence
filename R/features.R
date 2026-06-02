@@ -734,3 +734,161 @@ build_cluster_profiles <- function(rank_df,
 
   list(summary = summary_df, concepts = concepts_df)
 }
+
+# ---------------------------------------------------------------------------
+# Cluster label helpers
+# ---------------------------------------------------------------------------
+
+#' Generate cautious descriptive labels for each cluster
+#'
+#' Labels are hypothesis-generating only. Avoid implying clinical diagnosis.
+#'
+#' @param profiles List from [build_cluster_profiles()] (`$summary`, `$concepts`).
+#' @return Named character vector: cluster_id -> label.
+#' @export
+label_clusters <- function(profiles) {
+  s <- profiles$summary
+  c_df <- profiles$concepts
+  if (nrow(s) == 0L) return(character(0))
+
+  labels <- vapply(seq_len(nrow(s)), function(i) {
+    cid <- s$cluster_id[i]
+    n   <- s$n_patients[i]
+    pct <- s$pct_cohort[i]
+    sp  <- s$pct_death[i] %||% 0
+
+    # Noise / unassigned cluster
+    if (cid <= 0L) return("Unassigned / outlier group")
+
+    # Smallest cluster
+    if (n <= 10L) return(sprintf("Small outlier cluster (n=%d)", n))
+
+    # Dominant domain from concept prevalence
+    top_dom <- if (!is.null(c_df) && nrow(c_df) > 0L) {
+      c_df |>
+        dplyr::filter(cluster_id == cid) |>
+        dplyr::group_by(domain) |>
+        dplyr::summarise(med_prev = median(prevalence, na.rm = TRUE),
+                          .groups = "drop") |>
+        dplyr::arrange(dplyr::desc(med_prev)) |>
+        dplyr::slice_head(n = 1L) |>
+        dplyr::pull(domain)
+    } else {
+      NA_character_
+    }
+
+    # Sparsity-based label
+    if (!is.na(s$median_followup_days[i]) &&
+        s$median_followup_days[i] < 90) {
+      return("Sparse follow-up group")
+    }
+
+    if (!is.na(top_dom)) {
+      if (top_dom == "drug")       return("Medication-dense group")
+      if (top_dom == "condition")  return("Condition-heavy group")
+      if (top_dom == "visit")      return("High-utilisation group")
+      if (top_dom == "measurement") return("Lab-intensive group")
+    }
+
+    # Largest cluster as reference
+    if (pct == max(s$pct_cohort, na.rm = TRUE)) {
+      return("Typical cohort pattern")
+    }
+
+    sprintf("Cluster %d (%s)", cid, if (!is.na(pct)) paste0(round(pct, 0), "%") else "")
+  }, character(1))
+
+  setNames(labels, as.character(s$cluster_id))
+}
+
+#' Summarise a single cluster profile as a cautious one-paragraph narrative
+#'
+#' @param profile_row One row from `profiles$summary`.
+#' @param concepts_df `profiles$concepts` tibble for context.
+#' @param cluster_label Character(1). Label from [label_clusters()].
+#'
+#' @return A single character string (one paragraph).
+#' @export
+summarize_cluster_profile <- function(profile_row,
+                                       concepts_df,
+                                       cluster_label = NULL) {
+  r   <- profile_row
+  cid <- r$cluster_id
+
+  lbl <- cluster_label %||% paste0("Cluster ", cid)
+
+  top_cond <- if (!is.null(concepts_df) && nrow(concepts_df) > 0L) {
+    concepts_df |>
+      dplyr::filter(cluster_id == cid, domain == "condition") |>
+      dplyr::arrange(dplyr::desc(prevalence)) |>
+      dplyr::slice_head(n = 3L) |>
+      dplyr::pull(concept_name)
+  } else character(0)
+
+  top_drug <- if (!is.null(concepts_df) && nrow(concepts_df) > 0L) {
+    concepts_df |>
+      dplyr::filter(cluster_id == cid, domain == "drug") |>
+      dplyr::arrange(dplyr::desc(prevalence)) |>
+      dplyr::slice_head(n = 3L) |>
+      dplyr::pull(concept_name)
+  } else character(0)
+
+  age_txt <- if (!is.na(r$median_age)) paste0("median age ", round(r$median_age, 0)) else NULL
+  fu_txt  <- if (!is.na(r$median_followup_days))
+    paste0("median follow-up ", round(r$median_followup_days / 365.25, 1), " years")
+  else NULL
+
+  cond_txt <- if (length(top_cond) > 0L)
+    paste0("Top conditions: ", paste(top_cond, collapse = ", "), ".") else ""
+  drug_txt <- if (length(top_drug) > 0L)
+    paste0("Top drugs: ", paste(top_drug, collapse = ", "), ".") else ""
+
+  paste0(
+    lbl, " (n=", r$n_patients, ", ", round(r$pct_cohort, 1), "% of cohort). ",
+    if (!is.null(age_txt) || !is.null(fu_txt))
+      paste(c(age_txt, fu_txt), collapse = "; "),
+    ". ",
+    cond_txt, " ", drug_txt,
+    " Possible interpretation: this group may reflect a distinct clinical ",
+    "pattern or care pathway. Requires clinical review and validation. ",
+    "Do not interpret as a confirmed disease subtype."
+  )
+}
+
+#' Compare two clusters by feature enrichment
+#'
+#' Returns features most enriched in cluster_a relative to cluster_b
+#' (by prevalence ratio), or vice versa.
+#'
+#' @param concepts_df `profiles$concepts` tibble.
+#' @param cluster_a Integer. Reference cluster.
+#' @param cluster_b Integer. Comparison cluster.
+#' @param top_n Integer. Top features to return per direction. Default 5.
+#'
+#' @return tibble(concept_name, domain, prev_a, prev_b, ratio, direction)
+#' @export
+compare_cluster_profiles <- function(concepts_df, cluster_a, cluster_b,
+                                      top_n = 5L) {
+  if (is.null(concepts_df) || nrow(concepts_df) == 0L) return(tibble::tibble())
+
+  a <- dplyr::filter(concepts_df, cluster_id == cluster_a) |>
+    dplyr::select(concept_name, domain, prev_a = prevalence)
+  b <- dplyr::filter(concepts_df, cluster_id == cluster_b) |>
+    dplyr::select(concept_name, domain, prev_b = prevalence)
+
+  dplyr::full_join(a, b, by = c("concept_name","domain")) |>
+    dplyr::mutate(
+      prev_a    = dplyr::coalesce(prev_a, 0),
+      prev_b    = dplyr::coalesce(prev_b, 0),
+      ratio     = (prev_a + 0.5) / (prev_b + 0.5),
+      direction = dplyr::case_when(
+        ratio > 1.5 ~ paste0("Higher in Cluster ", cluster_a),
+        ratio < 0.67 ~ paste0("Higher in Cluster ", cluster_b),
+        TRUE        ~ "Similar"
+      )
+    ) |>
+    dplyr::filter(direction != "Similar") |>
+    dplyr::arrange(dplyr::desc(abs(log(ratio)))) |>
+    dplyr::slice_head(n = as.integer(top_n) * 2L) |>
+    dplyr::select(concept_name, domain, prev_a, prev_b, ratio, direction)
+}

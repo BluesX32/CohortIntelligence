@@ -137,13 +137,43 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
     rv$cohort_members(cohort_members)
     rv$person_data(person_data)
     rv$domain_data(domain_data)
+    rv$domain_activity(domain_act)
     rv$feature_matrix(feat_mat)
     rv$ml_results(ml_res)
     rv$rank_df(rank_df)
     rv$quilt_base(quilt_base)
 
-    # Auto-select the highest-priority patient so Trajectory Viewer
-    # is pre-populated without requiring a manual quilt click
+    shiny::setProgress(0.92, detail = "Computing temporal flags...")
+    temp_flags <- tryCatch(
+      detect_temporal_flags(cohort_members, domain_data),
+      error = function(e) {
+        message("[CohortIntelligence] Temporal flags error: ",
+                conditionMessage(e))
+        NULL
+      }
+    )
+    rv$temporal_flags(temp_flags)
+
+    shiny::setProgress(0.96, detail = "Building review sets...")
+    rev_sets <- tryCatch(
+      build_review_sets(
+        rank_df        = rank_df,
+        domain_activity = domain_act,
+        feature_matrix = feat_mat,
+        ml_results     = ml_res,
+        cohort_members = cohort_members,
+        temporal_flags = temp_flags,
+        n_per_set      = 10L
+      ),
+      error = function(e) {
+        message("[CohortIntelligence] Review sets error: ",
+                conditionMessage(e))
+        NULL
+      }
+    )
+    rv$review_sets(rev_sets)
+
+    # Auto-select the highest-priority patient
     first_patient <- if (!is.null(rank_df) && nrow(rank_df) > 0L) {
       rank_df$subject_id[which.min(rank_df$rank_position)]
     } else {
@@ -299,14 +329,17 @@ for (f in list.files("modules", pattern = "\\.R$", full.names = TRUE)) source(f)
 function(input, output, session) {
 
   rv <- list(
-    selected_patient = shiny::reactiveVal(NULL),
-    quilt_base       = shiny::reactiveVal(NULL),
-    domain_data      = shiny::reactiveVal(NULL),
-    cohort_members   = shiny::reactiveVal(NULL),
-    person_data      = shiny::reactiveVal(NULL),
-    feature_matrix   = shiny::reactiveVal(NULL),
-    ml_results       = shiny::reactiveVal(NULL),
-    rank_df          = shiny::reactiveVal(NULL)
+    selected_patient  = shiny::reactiveVal(NULL),
+    quilt_base        = shiny::reactiveVal(NULL),
+    domain_data       = shiny::reactiveVal(NULL),
+    domain_activity   = shiny::reactiveVal(NULL),
+    cohort_members    = shiny::reactiveVal(NULL),
+    person_data       = shiny::reactiveVal(NULL),
+    feature_matrix    = shiny::reactiveVal(NULL),
+    ml_results        = shiny::reactiveVal(NULL),
+    rank_df           = shiny::reactiveVal(NULL),
+    temporal_flags    = shiny::reactiveVal(NULL),
+    review_sets       = shiny::reactiveVal(NULL)
   )
 
   # ── Loading status indicator (replaces the Load Cohort button) ───────────
@@ -383,31 +416,12 @@ function(input, output, session) {
     }
   })
 
+  # ── Tab 1: Cohort Overview ────────────────────────────────────────────────
   cohort_overviewServer(
     "overview",
     quilt_base       = rv$quilt_base,
     selected_patient = rv$selected_patient
   )
-
-  anomaly_explorerServer(
-    "anomaly",
-    ml_results       = shiny::reactive(rv$ml_results()),
-    selected_patient = rv$selected_patient
-  )
-
-  patient_selectorServer(
-    "selector",
-    rank_df          = shiny::reactive(rv$rank_df()),
-    selected_patient = rv$selected_patient
-  )
-
-  trajectory_viewerServer(
-    "trajectory",
-    selected_patient = rv$selected_patient,
-    domain_data      = shiny::reactive(rv$domain_data()),
-    cohort_members   = shiny::reactive(rv$cohort_members())
-  )
-
   demographicsServer(
     "demographics",
     cohort_members = shiny::reactive(rv$cohort_members()),
@@ -415,12 +429,12 @@ function(input, output, session) {
     person_data    = shiny::reactive(rv$person_data())
   )
 
-  hypothesis_panelServer(
-    "hypotheses",
-    feature_matrix = shiny::reactive(rv$feature_matrix()),
-    ml_results     = shiny::reactive(rv$ml_results())
+  # ── Tab 2: Cluster & Anomaly ──────────────────────────────────────────────
+  anomaly_explorerServer(
+    "anomaly",
+    ml_results       = shiny::reactive(rv$ml_results()),
+    selected_patient = rv$selected_patient
   )
-
   cluster_profileServer(
     "clusters",
     rank_df        = shiny::reactive(rv$rank_df()),
@@ -428,14 +442,139 @@ function(input, output, session) {
     cohort_members = shiny::reactive(rv$cohort_members()),
     person_data    = shiny::reactive(rv$person_data())
   )
+  temporal_flagsServer(
+    "temporal_flags",
+    temporal_flags   = shiny::reactive(rv$temporal_flags()),
+    selected_patient = rv$selected_patient
+  )
 
-  # ── Export Report button (visible only after cohort loads) ─────────────
-  output$btn_report_ui <- shiny::renderUI({
+  # ── Tab 3: Review Queue ───────────────────────────────────────────────────
+  review_setsServer(
+    "review_sets",
+    review_sets_rv   = shiny::reactive(rv$review_sets()),
+    selected_patient = rv$selected_patient
+  )
+  signal_explanationServer(
+    "signal_explanation",
+    selected_patient = rv$selected_patient,
+    rank_df          = shiny::reactive(rv$rank_df()),
+    feature_matrix   = shiny::reactive(rv$feature_matrix()),
+    domain_activity  = shiny::reactive(rv$domain_activity()),
+    cohort_members   = shiny::reactive(rv$cohort_members()),
+    ml_results       = shiny::reactive(rv$ml_results())
+  )
+
+  # ── Tab 4: Trajectory Review ──────────────────────────────────────────────
+  trajectory_viewerServer(
+    "trajectory",
+    selected_patient = rv$selected_patient,
+    domain_data      = shiny::reactive(rv$domain_data()),
+    cohort_members   = shiny::reactive(rv$cohort_members())
+  )
+  signal_explanationServer(
+    "signal_explanation_traj",
+    selected_patient = rv$selected_patient,
+    rank_df          = shiny::reactive(rv$rank_df()),
+    feature_matrix   = shiny::reactive(rv$feature_matrix()),
+    domain_activity  = shiny::reactive(rv$domain_activity()),
+    cohort_members   = shiny::reactive(rv$cohort_members()),
+    ml_results       = shiny::reactive(rv$ml_results())
+  )
+
+  # ── Tab 5: Hypothesis & Report ────────────────────────────────────────────
+  hypothesis_panelServer(
+    "hypotheses",
+    feature_matrix = shiny::reactive(rv$feature_matrix()),
+    ml_results     = shiny::reactive(rv$ml_results())
+  )
+
+  # Clinician packet UI (shown after cohort loads)
+  output$clinician_packet_ui <- shiny::renderUI({
     shiny::req(rv$quilt_base())
-    shiny::downloadButton("btn_report", "Export Report",
-                          icon  = shiny::icon("file-export"),
-                          class = "btn-default btn-sm btn-block",
-                          style = "color: #b8c7ce; margin-bottom: 6px;")
+    shiny::tagList(
+      shiny::actionButton("btn_clinician_modal", "Configure & Export",
+                          icon  = shiny::icon("file-medical"),
+                          class = "btn-warning btn-sm")
+    )
+  })
+
+  shiny::observeEvent(input$btn_clinician_modal, {
+    shiny::showModal(shiny::modalDialog(
+      title = "Export Clinician Review Packet",
+      shiny::p(
+        style = "color:#475569;",
+        "Configure what to include in the HTML report."
+      ),
+      shiny::numericInput("cp_n_patients", "Max patients to include",
+                          value = 10L, min = 1L, max = 50L),
+      shiny::checkboxGroupInput(
+        "cp_include",
+        "Include sections:",
+        choices  = c("Typical patients"   = "typical",
+                     "Outlier patients"   = "outliers",
+                     "Sparse follow-up"   = "sparse",
+                     "Temporal flags"     = "temporal_flags",
+                     "Hypotheses"         = "hypotheses"),
+        selected = c("typical","outliers","sparse",
+                     "temporal_flags","hypotheses"),
+        inline   = TRUE
+      ),
+      footer = shiny::tagList(
+        shiny::modalButton("Cancel"),
+        shiny::downloadButton("btn_clinician_export",
+                               "Export HTML",
+                               class = "btn-warning btn-sm")
+      )
+    ))
+  })
+
+  output$btn_clinician_export <- shiny::downloadHandler(
+    filename = function() paste0("clinician_review_", Sys.Date(), ".html"),
+    content  = function(file) {
+      shiny::removeModal()
+      shiny::withProgress(message = "Building clinician report...", value = 0.5, {
+        inc <- as.list(setNames(
+          rep(TRUE, length(input$cp_include)),
+          input$cp_include
+        ))
+        tryCatch(
+          export_clinician_review_packet(
+            results = list(
+              cohort_members   = rv$cohort_members(),
+              rank_df          = rv$rank_df(),
+              domain_data      = rv$domain_data(),
+              person_data      = rv$person_data(),
+              ml_results       = rv$ml_results(),
+              hypotheses       = NULL,
+              quilt_base       = rv$quilt_base(),
+              temporal_flags   = rv$temporal_flags(),
+              review_sets      = rv$review_sets(),
+              cluster_profiles = NULL
+            ),
+            path        = file,
+            cohort_name = "CohortIntelligence Review",
+            n_patients  = as.integer(input$cp_n_patients %||% 10L),
+            include     = inc
+          ),
+          error = function(e) {
+            message("[CohortIntelligence] Clinician report error: ",
+                    conditionMessage(e))
+          }
+        )
+        shiny::setProgress(1.0)
+      })
+    }
+  )
+
+  # ── Sidebar exports (shown after cohort loads) ────────────────────────────
+  output$sidebar_exports <- shiny::renderUI({
+    shiny::req(rv$quilt_base())
+    shiny::tagList(
+      shiny::downloadButton("btn_report", "Export Quilt Report",
+                            icon  = shiny::icon("file-export"),
+                            class = "btn-default btn-sm btn-block",
+                            style = "color:#b8c7ce; margin-bottom:4px;")
+    )
   })
 
   output$btn_report <- shiny::downloadHandler(

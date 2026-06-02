@@ -229,5 +229,12 @@ demographicsServer <- function(id, cohort_members, domain_data, person_data) {
         paper_bgcolor = "#FAFAFA"
       )
     })
+
+    # Render eagerly even when the Demographics tab is not visible so that
+    # outputs are populated the moment the cohort loads, not on first click.
+    for (out_id in c("box_n","box_fu","box_age","box_death",
+                      "age_plot","sex_plot","race_plot","density_plot")) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    }
   })
 }
