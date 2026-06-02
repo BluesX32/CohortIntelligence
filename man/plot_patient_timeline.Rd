@@ -2,7 +2,7 @@
 % Please edit documentation in R/trajectory.R
 \name{plot_patient_timeline}
 \alias{plot_patient_timeline}
-\title{Plot a patient clinical timeline}
+\title{Plot a human-readable patient clinical timeline}
 \usage{
 plot_patient_timeline(
   timeline_df,
@@ -15,18 +15,18 @@ plot_patient_timeline(
 \arguments{
 \item{timeline_df}{tibble from \code{\link[=build_patient_timeline]{build_patient_timeline()}}.}
 
-\item{interactive}{Logical. \code{TRUE} returns a plotly widget; \code{FALSE} returns
-a ggplot2 object.}
+\item{interactive}{Logical. \code{TRUE} = plotly; \code{FALSE} = ggplot2.}
 
-\item{color_by}{\code{"domain"} or \code{"concept"}. Colour aesthetic.}
+\item{show_index}{Logical. Dashed vertical line at day 0.}
 
-\item{show_index}{Logical. Draw a vertical line at day 0 (index date).}
-
-\item{date_range}{Optional \code{c(days_start, days_end)} relative to index date.}
+\item{date_range}{Optional \code{c(days_start, days_end)}.}
 }
 \value{
 A plotly widget or ggplot2 object.
 }
 \description{
-Plot a patient clinical timeline
+Concepts are grouped by clinical domain and sorted consistently.
+Long concept names are truncated on the y-axis but shown in full on hover.
+The left margin adapts to the longest visible label. The plot height
+scales with the number of distinct concept rows.
 }

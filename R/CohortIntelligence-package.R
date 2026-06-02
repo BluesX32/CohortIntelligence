@@ -21,6 +21,7 @@ utils::globalVariables(c(
   "p_value_raw", "p_value_adjusted", "direction", "description_text",
   "n", "value_as_number", "birth_year",
   "gender_concept_id", "race_concept_id", "ethnicity_concept_id",
+  "concept_name_short",
   "gender_name", "race_name", "ethnicity_name",
   "age_at_index", "calendar_month", "n_patients",
   "median_followup", "median_age", "pct_death",

@@ -21,13 +21,12 @@ build_patient_timeline(
 
 \item{domains}{Character vector of domains to include.}
 
-\item{top_n}{Integer. Top N most frequent concepts per domain to include.
-Use \code{Inf} for all concepts.}
+\item{top_n}{Integer. Top N most frequent concepts per domain. Default 10.}
 }
 \value{
-tibble(subject_id, domain, concept_name, event_date,
-value_as_number, days_from_index, domain_rank) or \code{NULL} if patient
-not found.
+tibble(subject_id, domain, concept_name, concept_name_short,
+event_date, value_as_number, days_from_index, domain_rank)
+or \code{NULL} if patient not found.
 }
 \description{
 Build a swim-lane timeline tibble for a single patient
