@@ -198,33 +198,35 @@ cohort_overviewServer <- function(id,
 
     # ── 2. Filtered + re-encoded quilt reactive ──────────────────────────────
     quilt_filtered <- shiny::reactive({
-      shiny::req(
-        quilt_base(),
-        input$filter_clusters,
-        input$filter_domains,
-        input$filter_tiers,
-        input$window_range,
-        input$sort_by,
-        input$value_encoding
-      )
+      # Only require quilt_base -- all filter inputs are handled with
+      # safe defaults so the quilt renders immediately on cohort load
+      # without waiting for controls to be initialised.
+      shiny::req(quilt_base())
 
       d <- quilt_base()
 
-      # Cluster filter
-      d <- dplyr::filter(d, as.character(cluster_id) %in% input$filter_clusters)
-
-      # Domain filter
-      d <- dplyr::filter(d, domain %in% input$filter_domains)
-
-      # Tier filter
-      if (input$filter_tiers != "All") {
-        d <- dplyr::filter(d, priority_tier == input$filter_tiers)
+      # Cluster filter (NULL / character(0) = show all)
+      clusters_sel <- input$filter_clusters
+      if (length(clusters_sel) > 0L) {
+        d <- dplyr::filter(d, as.character(cluster_id) %in% clusters_sel)
       }
 
-      # Window range filter
+      # Domain filter (NULL = show all)
+      domains_sel <- input$filter_domains
+      if (length(domains_sel) > 0L) {
+        d <- dplyr::filter(d, domain %in% domains_sel)
+      }
+
+      # Tier filter (NULL or "All" = show all)
+      tier_sel <- input$filter_tiers %||% "All"
+      if (nzchar(tier_sel) && tier_sel != "All") {
+        d <- dplyr::filter(d, priority_tier == tier_sel)
+      }
+
+      # Window range filter (skip when slider not yet initialised)
       wr     <- input$window_range
       labels <- win_labels_rv()
-      if (length(wr) >= 2L && length(labels) >= 2L) {
+      if (length(wr) >= 2L && all(nzchar(wr)) && length(labels) >= 2L) {
         win_min <- match(wr[1], labels)
         win_max <- match(wr[2], labels)
         if (!is.na(win_min) && !is.na(win_max)) {
@@ -232,17 +234,19 @@ cohort_overviewServer <- function(id,
         }
       }
 
-      # Re-encode fill value
+      # Re-encode fill value (default log1p_count)
+      encoding <- input$value_encoding %||% "log1p_count"
       d <- dplyr::mutate(d,
-        fill_value = switch(input$value_encoding,
+        fill_value = switch(encoding,
           log1p_count = log1p(event_count),
           binary      = as.numeric(event_count > 0),
-          count       = as.numeric(event_count)
+          count       = as.numeric(event_count),
+          log1p(event_count)   # fallback
         )
       )
 
-      # Re-sort patient rows
-      .reorder_patient_rows(d, sort_by = input$sort_by)
+      # Re-sort patient rows (default cluster)
+      .reorder_patient_rows(d, sort_by = input$sort_by %||% "cluster")
     })
 
     # ── 3. Render quilt ──────────────────────────────────────────────────────
