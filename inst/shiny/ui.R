@@ -235,7 +235,8 @@ shinydashboard::dashboardPage(
           "temporal flags, and top hypotheses."
         ),
         shiny::uiOutput("clinician_packet_ui")
-      )
+      ),
+
       # ── Tab 6: Outcome Explorer ────────────────────────────────────────
       shinydashboard::tabItem(
         tabName = "outcome_explorer",
