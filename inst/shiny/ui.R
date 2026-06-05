@@ -55,6 +55,11 @@ shinydashboard::dashboardPage(
         "Hypothesis & Report",
         tabName = "hypothesis_report",
         icon    = shiny::icon("flask")
+      ),
+      shinydashboard::menuItem(
+        "Outcome Explorer",
+        tabName = "outcome_explorer",
+        icon    = shiny::icon("bullseye")
       )
     ),
     shiny::hr(),
@@ -230,6 +235,31 @@ shinydashboard::dashboardPage(
           "temporal flags, and top hypotheses."
         ),
         shiny::uiOutput("clinician_packet_ui")
+      )
+      # ── Tab 6: Outcome Explorer ────────────────────────────────────────
+      shinydashboard::tabItem(
+        tabName = "outcome_explorer",
+        shiny::fluidRow(
+          shiny::column(12,
+            shiny::h3("Outcome Explorer",
+                       shiny::tags$small(
+                         style = "color:#64748b; font-size:0.6em; margin-left:10px;",
+                         "Temporal distribution of events, outcome-stratified UMAP,",
+                         " and exposure–outcome timing"
+                       ))
+          )
+        ),
+        shiny::div(
+          class = "alert alert-info",
+          style = paste0("padding: 10px 14px; margin-bottom: 12px;",
+                         " font-size: 0.88em;"),
+          shiny::icon("circle-info"),
+          " Outcome Explorer uses the same extracted OMOP domain data as the",
+          " main pipeline — no additional database queries required.",
+          shiny::tags$b(" All findings are exploratory and require clinical",
+                         " validation.")
+        ),
+        outcome_explorerUI("outcome_explorer")
       )
     )
   )

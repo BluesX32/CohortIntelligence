@@ -490,6 +490,15 @@ function(input, output, session) {
     ml_results     = shiny::reactive(rv$ml_results())
   )
 
+  # ── Tab 6: Outcome Explorer ───────────────────────────────────────────────
+  outcome_explorerServer(
+    "outcome_explorer",
+    domain_data    = shiny::reactive(rv$domain_data()),
+    cohort_members = shiny::reactive(rv$cohort_members()),
+    ml_results     = shiny::reactive(rv$ml_results()),
+    feature_matrix = shiny::reactive(rv$feature_matrix())
+  )
+
   # Clinician packet UI (shown after cohort loads)
   output$clinician_packet_ui <- shiny::renderUI({
     shiny::req(rv$quilt_base())

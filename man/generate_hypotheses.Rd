@@ -22,9 +22,11 @@ correlation for continuous, Cramer's V for binary) to retain.}
 
 \item{max_hypotheses}{Integer. Maximum number of hypotheses to return.}
 
-\item{include_unmapped}{Logical. If \code{FALSE} (default), concepts named
-\code{"No matching concept"}, \code{"Unmapped concept"}, or similar are excluded
-from the ranked output so they do not dominate the hypothesis list.}
+\item{include_unmapped}{Logical. If \code{FALSE} (default), concepts labelled
+\code{"Unmapped concept"} (the canonical term for OMOP concept_id = 0) or
+similar are excluded from the ranked output. Unmapped concepts reflect
+vocabulary coverage gaps and are data-quality signals, not clinical
+hypotheses. Set \code{TRUE} only to audit mapping coverage.}
 }
 \value{
 tibble(hypothesis_id, cluster_a, cluster_b, domain, concept_name,
